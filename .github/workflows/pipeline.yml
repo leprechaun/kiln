@@ -1,0 +1,79 @@
+name: pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # Pure-function unit tests for the curation/normalization/generation
+  # tooling -- only needs uv/Python, nothing else. Its own job (not just an
+  # earlier step) so it's a distinct check, and so `validate` never even
+  # provisions a runner with kcl/crossplane until this has already passed.
+  # Excludes tests/integration -- that's covered by render-all in the
+  # validate job below, and running it twice would just be slower for no
+  # benefit.
+  tooling-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.0
+
+      - name: Run tooling unit tests
+        working-directory: tooling
+        run: uv run pytest tests --ignore=tests/integration -v
+
+  validate:
+    needs: tooling-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.0
+
+      - name: Setup the KCL CLI
+        run: curl -fsSL https://kcl-lang.io/script/install-cli.sh | bash
+
+      - name: Setup the Crossplane CLI
+        run: |
+          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
+          sudo mv crossplane /usr/local/bin/crossplane
+
+      # Fast, no Docker -- pure KCL logic/type checks. Fails here before
+      # anything more expensive runs.
+      - name: kcl test
+        working-directory: kcl-scripts
+        run: kcl test .
+
+      # Regenerates every kind's composition.yaml/xrd.yaml from the current
+      # kcl-scripts/ source -- don't trust whatever happens to already be
+      # committed under manifests/, in case someone forgot to regenerate
+      # locally before pushing.
+      - name: Generate manifests
+        working-directory: tooling
+        run: uv run generate-all
+
+      # Actually runs the Composition pipeline via Docker (function-kcl,
+      # function-auto-ready) against every kind's sample XR. Needs Docker,
+      # which ubuntu-latest runners already have running at the default
+      # socket -- no DOCKER_HOST override needed here, unlike local dev
+      # machines using Colima or similar.
+      - name: Render every kind
+        working-directory: tooling
+        run: uv run render-all
+
+      - name: Upload generated manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifests
+          path: manifests/

@@ -1,0 +1,18 @@
+apiVersion: platform.kcl-first.io/v1alpha1
+kind: DnsValidatedCertificate
+metadata:
+  name: example-site-b16081bf34d0
+  annotations:
+    crossplane.io/composition-resource-name: certificate
+status:
+  certificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abc
+---
+apiVersion: cloudfront.aws.m.upbound.io/v1beta1
+kind: Distribution
+metadata:
+  name: example-site-dist00001
+  annotations:
+    crossplane.io/composition-resource-name: distribution
+status:
+  atProvider:
+    domainName: d123.cloudfront.net

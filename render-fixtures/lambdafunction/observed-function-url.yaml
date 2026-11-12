@@ -1,0 +1,9 @@
+apiVersion: lambda.aws.m.upbound.io/v1beta1
+kind: FunctionURL
+metadata:
+  name: example-function-4485e4e56f5b
+  annotations:
+    crossplane.io/composition-resource-name: function-url
+status:
+  atProvider:
+    functionUrl: https://abc123.lambda-url.us-east-1.on.aws/

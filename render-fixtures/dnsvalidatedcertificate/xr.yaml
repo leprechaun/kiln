@@ -1,0 +1,8 @@
+apiVersion: platform.kcl-first.io/v1alpha1
+kind: DnsValidatedCertificate
+metadata:
+  name: example-cert
+spec:
+  domainName: example.com
+  region: us-east-1
+  zoneId: Z123456ABCDEFG

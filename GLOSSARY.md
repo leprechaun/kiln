@@ -1,4 +1,4 @@
-# KCL-First Platform
+# Kiln
 
 Domain vocabulary for the Crossplane/KCL composition platform being redesigned in `cia-infra-test` — spans the Kubernetes-native resource model (XR/XRD/MR) and the KCL composition-function calling convention (`oxr`/`ocds`).
 

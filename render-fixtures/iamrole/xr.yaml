@@ -1,0 +1,9 @@
+apiVersion: platform.kcl-first.io/v1alpha1
+kind: IAMRole
+metadata:
+  name: example-role
+spec:
+  roleName: my-lambda-execution-role
+  trustedService: lambda.amazonaws.com
+  managedPolicyArns:
+    - arn:aws:iam::aws:policy/ReadOnlyAccess

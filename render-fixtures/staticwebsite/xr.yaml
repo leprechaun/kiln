@@ -1,0 +1,9 @@
+apiVersion: platform.kcl-first.io/v1alpha1
+kind: StaticWebsite
+metadata:
+  name: example-site
+spec:
+  bucketName: my-website-bucket
+  domainName: www.example.com
+  region: us-east-2
+  zoneId: Z123456ABCDEFG

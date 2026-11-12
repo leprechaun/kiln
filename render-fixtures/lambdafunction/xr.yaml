@@ -1,0 +1,14 @@
+apiVersion: platform.kcl-first.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: example-function
+spec:
+  functionName: my-handler
+  region: us-east-1
+  role: arn:aws:iam::123456789012:role/my-lambda-execution-role
+  handler: index.handler
+  runtime: python3.12
+  code:
+    s3Bucket: my-deployment-bucket
+    s3Key: code.zip
+  enableFunctionUrl: true
