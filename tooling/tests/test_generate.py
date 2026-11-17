@@ -29,7 +29,10 @@ def test_combines_sources_stripping_local_imports_but_keeping_external_ones():
         "import json\n"
         "import .schemas_compositions\n"
         "import .schemas_providers\n\n"
-        "composeIAMRole = lambda oxr, ocds -> [any] {\n  []\n}\n"
+        "composeIAMRole = lambda oxr, ocds -> [any] {\n"
+        "    a: schemas_providers.Foo = oxr.a\n"
+        "    b: schemas_compositions.Bar = oxr.b\n"
+        "    []\n}\n"
     )
 
     combined = build_combined_kcl_source(
@@ -130,3 +133,79 @@ def test_generate_xrd_declares_the_status_schema_under_status_when_given_one():
 
     properties = xrd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]
     assert properties == {"spec": spec_schema, "status": status_schema}
+
+
+_COMPOSE_USING_A = "import .schemas_a\n\ncomposeThing = lambda oxr, ocds -> [any] {\n    x: schemas_a.A = oxr\n    []\n}\n"
+
+
+def _combine(schemas: str, compose: str = _COMPOSE_USING_A) -> str:
+    return build_combined_kcl_source({"schemas_a": schemas}, compose)
+
+
+def test_drops_schemas_the_compose_function_cannot_reach():
+    combined = _combine("schema A:\n    x: str\n\nschema Unused:\n    y: str\n")
+
+    assert "schema A:" in combined
+    assert "Unused" not in combined
+
+
+def test_keeps_schemas_reachable_through_other_schemas_and_inheritance():
+    schemas = (
+        "schema A(Base):\n    inner: Inner\n    items: [Listed]\n\n"
+        "schema Base:\n    b: str\n\n"
+        "schema Inner:\n    i: str\n\n"
+        "schema Listed:\n    l: str\n\n"
+        "schema Unused:\n    u: str\n"
+    )
+
+    combined = _combine(schemas)
+
+    for kept in ("schema A(Base):", "schema Base:", "schema Inner:", "schema Listed:"):
+        assert kept in combined
+    assert "Unused" not in combined
+
+
+def test_a_name_that_only_appears_in_prose_does_not_keep_a_schema():
+    schemas = 'schema A:\n    r"""Wraps a Role, not the Role schema."""\n    x: str\n\nschema Role:\n    r: str\n'
+
+    assert "schema Role:" not in _combine(schemas)
+
+
+def test_strips_schema_docstrings_but_leaves_the_compose_source_alone():
+    schemas = 'schema A:\n    r"""\n    Long description.\n\n    Attributes\n    ----------\n    x: str\n    """\n    x: str\n'
+    compose = _COMPOSE_USING_A + '\n# kept comment\n_note = """\n    kept text\n"""\n'
+
+    combined = _combine(schemas, compose)
+
+    assert "Long description" not in combined
+    assert "schema A:\n    x: str" in combined
+    assert "# kept comment" in combined
+    assert "kept text" in combined
+
+
+def test_keeps_top_level_code_that_follows_a_dropped_schema():
+    schemas = "schema A:\n    x: str\n\nschema Unused:\n    y: str\n\nhelper = lambda v: str -> str {\n    v\n}\n"
+
+    combined = _combine(schemas)
+
+    assert "Unused" not in combined
+    assert "helper = lambda v: str -> str {" in combined
+
+
+def test_keeps_whatever_a_top_level_helper_depends_on():
+    schemas = "schema A:\n    x: str\n\nschema OnlyForHelper:\n    y: str\n\nhelper = lambda v -> OnlyForHelper {\n    v\n}\n"
+
+    assert "schema OnlyForHelper:" in _combine(schemas)
+
+
+def test_the_generated_source_has_no_runs_of_blank_lines():
+    combined = _combine("schema A:\n    x: str\n\n\n\nschema Unused:\n    y: str\n\n\nschema Also:\n    z: str\n")
+
+    assert "\n\n\n" not in combined
+
+
+def test_generate_xrd_defaults_to_namespaced_and_accepts_a_cluster_scope():
+    args = dict(kind="Widget", group="g.io", plural="widgets", spec_schema={"type": "object"})
+
+    assert generate_xrd(**args)["spec"]["scope"] == "Namespaced"
+    assert generate_xrd(**args, scope="Cluster")["spec"]["scope"] == "Cluster"

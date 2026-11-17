@@ -95,3 +95,23 @@ def test_jsonnet_format_imports_the_kcl_source_instead_of_embedding_it(tmp_path,
     assert "composeWidget" in (output_dir / "composition.k").read_text()
     assert not (output_dir / "composition.yaml").exists()
     assert (output_dir / "xrd.yaml").exists()
+
+
+def _xrd_scope(tmp_path, monkeypatch, **kwargs):
+    kcl_dir = tmp_path / "kcl"
+    kcl_dir.mkdir()
+    _write_kcl_dir(kcl_dir)
+    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
+    generate_manifests_for(
+        kind="Widget", spec_schema="WidgetSpec", group="g.io", plural="widgets",
+        kcl_dir=kcl_dir, output_dir=tmp_path / "out", **kwargs,
+    )
+    return yaml.safe_load((tmp_path / "out" / "xrd.yaml").read_text())["spec"]["scope"]
+
+
+def test_xrd_scope_is_namespaced_unless_told_otherwise(tmp_path, monkeypatch):
+    assert _xrd_scope(tmp_path, monkeypatch) == "Namespaced"
+
+
+def test_xrd_scope_can_be_cluster(tmp_path, monkeypatch):
+    assert _xrd_scope(tmp_path, monkeypatch, scope="Cluster") == "Cluster"

@@ -105,3 +105,15 @@ def test_init_rejects_an_unknown_format(tmp_path):
     with pytest.raises(SystemExit):
         main(["init", str(tmp_path / "p"), "--format", "cue"])
     assert not (tmp_path / "p").exists()
+
+
+def test_init_writes_the_default_scope_and_rejects_unknown_ones(tmp_path):
+    import pytest
+
+    main(["init", str(tmp_path / "a")])
+    main(["init", str(tmp_path / "b"), "--scope", "Cluster"])
+
+    assert find_project(tmp_path / "a").scope == "Namespaced"
+    assert find_project(tmp_path / "b").scope == "Cluster"
+    with pytest.raises(SystemExit):
+        main(["init", str(tmp_path / "c"), "--scope", "Mine"])

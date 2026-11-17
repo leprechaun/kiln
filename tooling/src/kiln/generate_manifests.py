@@ -54,6 +54,7 @@ def generate_manifests_for(
     kcl_dir: Path,
     output_dir: Path,
     output_format: str = "yaml",
+    scope: str = "Namespaced",
 ) -> None:
     compose_source = (kcl_dir / f"{kind.lower()}.k").read_text()
     providers_source = (kcl_dir / "schemas_providers.k").read_text()
@@ -68,7 +69,7 @@ def generate_manifests_for(
     schema = normalize_openapi_schema(doc, spec_schema)
     status_name = f"{kind}Status"
     status_schema = normalize_openapi_schema(doc, status_name) if status_name in doc["components"]["schemas"] else None
-    xrd = generate_xrd(kind=kind, group=group, plural=plural, spec_schema=schema, status_schema=status_schema)
+    xrd = generate_xrd(kind=kind, group=group, plural=plural, spec_schema=schema, status_schema=status_schema, scope=scope)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     _write_composition(composition, output_format, output_dir)

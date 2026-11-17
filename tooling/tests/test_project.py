@@ -54,3 +54,32 @@ def test_unknown_format_is_rejected(tmp_path):
 
     with pytest.raises(InvalidConfig, match="format must be one of"):
         find_project(tmp_path)
+
+
+def test_scope_defaults_to_namespaced_with_a_per_kind_override(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\n\n[kinds.Site]\nscope = "Cluster"\n')
+
+    project = find_project(tmp_path)
+
+    assert project.scope == "Namespaced"
+    assert project.scope_for("Site") == "Cluster"
+    assert project.scope_for("Other") == "Namespaced"
+
+
+def test_a_project_scope_applies_to_kinds_without_their_own(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\nscope = "Cluster"\n\n[kinds.Role]\nscope = "Namespaced"\n')
+
+    project = find_project(tmp_path)
+
+    assert project.scope_for("Role") == "Namespaced"
+    assert project.scope_for("Anything") == "Cluster"
+
+
+def test_unknown_scopes_are_rejected_wherever_they_appear(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\nscope = "Everywhere"\n')
+    with pytest.raises(InvalidConfig, match="scope must be one of"):
+        find_project(tmp_path)
+
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\n\n[kinds.Site]\nscope = "Mine"\n')
+    with pytest.raises(InvalidConfig, match=r"kinds\.Site\.scope must be one of"):
+        find_project(tmp_path)

@@ -11,7 +11,7 @@ description: >
 | Term | Meaning | Where it lives |
 |------|---------|----------------|
 | **XR** | The composite resource a consumer creates; their API | `render-fixtures/<kind>/xr.yaml` (sample) |
-| **XRD** | Schema for the XR | generated: `manifests/crossplane-compositions/<kind>/xrd.yaml` |
+| **XRD** | Schema for the XR; `scope` is `Namespaced` (can only compose resources in its own namespace) or `Cluster` (can also compose cluster-scoped resources) | generated: `manifests/crossplane-compositions/<kind>/xrd.yaml` |
 | **Composition** | Maps an XR to managed resources via `function-kcl` | generated: `composition.yaml` (or `.jsonnet`) |
 | **MR** | One real cloud object a provider manages | what `compose<Kind>` returns |
 | **Provider** | Controller that reconciles MRs | `manifests/crossplane-providers/` |

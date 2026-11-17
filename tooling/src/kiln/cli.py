@@ -6,7 +6,7 @@ from kiln.generate_all import generate_all
 from kiln.generate_manifests import generate_manifests_for
 from kiln.import_schema import import_schema
 from kiln.init import DEFAULT_GROUP, init_project
-from kiln.project import FORMATS, InvalidConfig, ProjectNotFound, find_project
+from kiln.project import FORMATS, SCOPES, InvalidConfig, ProjectNotFound, find_project
 from kiln.pull_crds import pull_crds
 from kiln.render import render
 from kiln.render_all import render_all
@@ -33,6 +33,7 @@ def _generate(project, args) -> int:
         kcl_dir=project.kcl_scripts_dir,
         output_dir=project.compositions_dir / args.kind.lower(),
         output_format=project.format,
+        scope=args.scope or project.scope_for(args.kind),
     )
     return 0
 
@@ -55,6 +56,12 @@ def _parser() -> argparse.ArgumentParser:
     init_cmd = commands.add_parser("init", help="Create a new, empty Kiln project")
     init_cmd.add_argument("directory", type=Path, help="Where to create the project")
     init_cmd.add_argument("--group", default=DEFAULT_GROUP, help=f"API group for the project's XRs (default: {DEFAULT_GROUP})")
+    init_cmd.add_argument(
+        "--scope",
+        choices=SCOPES,
+        default="Namespaced",
+        help="Default XR scope: Namespaced (composes namespaced resources) or Cluster. Override per kind in kiln.toml. Default: Namespaced",
+    )
     init_cmd.add_argument(
         "--format",
         choices=FORMATS,
@@ -88,6 +95,11 @@ def _parser() -> argparse.ArgumentParser:
     generate_cmd.add_argument("kind", help="Composite kind, e.g. IAMRole")
     generate_cmd.add_argument("--spec-schema", help="Composition spec schema name (default: <Kind>Spec)")
     generate_cmd.add_argument("--plural", help="Plural resource name (default: lowercased kind + 's')")
+    generate_cmd.add_argument(
+        "--scope",
+        choices=SCOPES,
+        help="XR scope for this run (default: the kind's scope in kiln.toml, else the project's scope, else Namespaced)",
+    )
     generate_cmd.set_defaults(handler=_generate)
 
     commands.add_parser(
@@ -114,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "init":
-        return init_project(args.directory, group=args.group, output_format=args.format)
+        return init_project(args.directory, group=args.group, output_format=args.format, scope=args.scope)
 
     try:
         project = find_project(Path.cwd(), root=args.root)

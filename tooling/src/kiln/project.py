@@ -1,11 +1,12 @@
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 MARKER = "kiln.toml"
 
 
 FORMATS = ("yaml", "jsonnet")
+SCOPES = ("Namespaced", "Cluster")
 
 
 class ProjectNotFound(Exception):
@@ -21,6 +22,11 @@ class Project:
     root: Path
     group: str
     format: str = "yaml"
+    scope: str = "Namespaced"
+    kind_scopes: dict[str, str] = field(default_factory=dict)
+
+    def scope_for(self, kind: str) -> str:
+        return self.kind_scopes.get(kind, self.scope)
 
     @property
     def kcl_scripts_dir(self) -> Path:
@@ -56,5 +62,12 @@ def find_project(start: Path, root: Path | None = None) -> Project:
             output_format = config.get("format", "yaml")
             if output_format not in FORMATS:
                 raise InvalidConfig(f"{MARKER}: format must be one of {', '.join(FORMATS)}, got {output_format!r}")
-            return Project(root=candidate, group=config["group"], format=output_format)
+            scope = config.get("scope", "Namespaced")
+            kind_scopes = {kind: table.get("scope", scope) for kind, table in config.get("kinds", {}).items()}
+            for where, value in [("scope", scope), *[(f"kinds.{k}.scope", v) for k, v in kind_scopes.items()]]:
+                if value not in SCOPES:
+                    raise InvalidConfig(f"{MARKER}: {where} must be one of {', '.join(SCOPES)}, got {value!r}")
+            return Project(
+                root=candidate, group=config["group"], format=output_format, scope=scope, kind_scopes=kind_scopes
+            )
     raise ProjectNotFound(f"no {MARKER} found in {root or start}" + ("" if root else " or any parent directory"))

@@ -40,6 +40,10 @@ cannot drift from it.
 - `format = "jsonnet"` in `kiln.toml` writes `composition.jsonnet` + `composition.k` instead of
   `composition.yaml`; `kiln render` then needs the `jsonnet` binary on `PATH`.
 
+- XR scope is `Namespaced` by default. A kind that composes cluster-scoped resources needs
+  `scope = "Cluster"` (project default in `kiln.toml`, or `[kinds.<Kind>] scope = "Cluster"`).
+  Prefer the namespaced `.m.` provider groups and keep the default.
+
 ## Debugging
 
 | Symptom | Look at |

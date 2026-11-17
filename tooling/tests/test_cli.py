@@ -133,3 +133,32 @@ def test_render_reports_a_jsonnet_evaluation_failure(tmp_path, monkeypatch, caps
     monkeypatch.chdir(project)
 
     assert main(["render", "IAMRole"]) == 1
+
+
+def _scoped_project(path):
+    project = _empty_project(path)
+    (project / "kiln.toml").write_text('group = "g.io"\nscope = "Namespaced"\n\n[kinds.Site]\nscope = "Cluster"\n')
+    for kind in ("Site", "Role"):
+        (project / "kcl-scripts" / f"{kind.lower()}.k").write_text(f"compose{kind} = lambda oxr, ocds -> [any] {{\n  []\n}}\n")
+    return project
+
+
+def test_generate_all_uses_each_kinds_scope(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr("kiln.generate_all.generate_manifests_for", lambda **kw: seen.update({kw["kind"]: kw["scope"]}))
+    monkeypatch.chdir(_scoped_project(tmp_path))
+
+    assert main(["generate-all"]) == 0
+    assert seen == {"Site": "Cluster", "Role": "Namespaced"}
+
+
+def test_generate_scope_flag_beats_the_kiln_toml_setting(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr("kiln.cli.generate_manifests_for", lambda **kw: seen.append(kw["scope"]))
+    monkeypatch.chdir(_scoped_project(tmp_path))
+
+    main(["generate", "Site"])
+    main(["generate", "Site", "--scope", "Namespaced"])
+    main(["generate", "Role"])
+
+    assert seen == ["Cluster", "Namespaced", "Namespaced"]

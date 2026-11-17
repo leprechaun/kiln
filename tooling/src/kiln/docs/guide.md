@@ -107,7 +107,7 @@ layout is fixed:
 
 | Path | Holds |
 |------|-------|
-| `kiln.toml` | the API group for your XRs (`group = "platform.example.com"`) and, optionally, the output format (`format = "yaml"` or `"jsonnet"`) |
+| `kiln.toml` | the API group for your XRs (`group = "platform.example.com"`) and, optionally, the output `format` (`"yaml"` or `"jsonnet"`) and XR `scope` (`"Namespaced"` or `"Cluster"`, with per-kind overrides) |
 | `manifests/crossplane-providers/` | one Provider manifest per provider; `pull-crds` reads these |
 | `manifests/functions.yaml` | the composition functions rendering needs (already set up) |
 | `crds/` | downloaded CRDs (generated, git-ignored) |
@@ -225,7 +225,10 @@ composeObjectStore = lambda oxr, ocds -> [any] {
 - `crossplane.io/external-name` sets the cloud object's own name.
 - Type every `forProvider` value with its imported schema (as above), so a misspelt
   or missing field fails `kcl test`.
-- The generated Composition flattens your files into one source string, so the
+- The generated Composition flattens your files into one source string. Only the schemas your
+  function reaches (directly or through other schemas) are included, and schema docstrings are
+  dropped, so the source stays small enough for Kubernetes annotations. The schema files keep
+  everything. The
   function may only import `.schemas_compositions`, `.schemas_providers`, and the KCL
   standard library (for example `import json`). Do not import another file of your own.
 
@@ -345,6 +348,30 @@ This writes `composition.yaml` and `xrd.yaml` under
 `manifests/crossplane-compositions/<kind lowercased>/`. It expects the spec schema
 `<Kind>Spec` (and optionally `<Kind>Status`); the XRD's plural is the lowercased kind
 plus `s`, its version is `v1alpha1`, and its API group comes from `kiln.toml`.
+
+### XR scope
+
+An XRD is `Namespaced` (the default) or `Cluster`. The choice follows what the function composes:
+
+- A **Namespaced** XR can only compose resources in its own namespace. Use it with the namespaced
+  provider groups (`s3.aws.m.upbound.io`, the `.m.` ones this guide recommends).
+- A **Cluster** XR can compose cluster-scoped resources (the legacy non-`.m.` provider groups) as
+  well as namespaced ones. When it composes a namespaced resource, set `metadata.namespace` on that
+  resource explicitly.
+
+Set a project default and override it per kind in `kiln.toml`:
+
+```toml
+group = "platform.example.com"
+scope = "Namespaced"
+
+[kinds.ObjectStore]
+scope = "Cluster"
+```
+
+`kiln generate-all` uses these settings. `kiln generate <Kind> --scope Cluster` overrides them for
+one run. A kind's setting beats the project default, and the flag beats both. `kiln init --scope`
+writes the project default.
 
 ### Output format
 
