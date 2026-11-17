@@ -61,7 +61,7 @@ jobs:
       # locally before pushing.
       - name: Generate manifests
         working-directory: tooling
-        run: uv run generate-all
+        run: uv run kiln generate-all
 
       # Actually runs the Composition pipeline via Docker (function-kcl,
       # function-auto-ready) against every kind's sample XR. Needs Docker,
@@ -70,7 +70,7 @@ jobs:
       # machines using Colima or similar.
       - name: Render every kind
         working-directory: tooling
-        run: uv run render-all
+        run: uv run kiln render-all
 
       - name: Upload generated manifests
         uses: actions/upload-artifact@v4

@@ -52,15 +52,15 @@ The other two are where the actual platform design happens.
 ```mermaid
 flowchart LR
     subgraph mech1 [" "]
-        P1["① Pull CRDs<br/><code>make pull-crds</code>"]
-        P2["② Curate provider schemas<br/><code>uv run import</code>"]
+        P1["① Pull CRDs<br/><code>kiln pull-crds</code>"]
+        P2["② Curate provider schemas<br/><code>kiln import</code>"]
     end
     subgraph human ["Hand-written"]
         P3["③ Design the XR spec<br/><code>schemas_compositions.k</code>"]
         P4["④ Write & test compose fn<br/><code>kcl test .</code>"]
     end
     subgraph mech2 [" "]
-        P5["⑤ Generate & render<br/><code>uv run generate-all</code>"]
+        P5["⑤ Generate & render<br/><code>kiln generate-all</code>"]
     end
 
     P1 --> P2 --> P3 --> P4 --> P5
@@ -136,19 +136,54 @@ spec:
 
 ## Getting started
 
-You'll need the `crossplane` CLI, `kcl`, and `uv`.
+You'll need `uv`, plus the `crossplane` CLI and `kcl` for pulling, generating
+and testing, and Docker for rendering.
+
+Kiln is **not published on PyPI**. Run it with `uvx` straight from GitHub; the
+package is in the `tooling/` subdirectory:
 
 ```bash
-make pull-crds              # ① fetch provider CRDs into crds/
-(cd kcl-scripts && kcl test .) # ④ run every compose function's unit tests
-cd tooling
-uv run generate-all         # ⑤ regenerate every Composition + XRD
-uv run render-all           #   render each kind against its fixtures
-uv run pytest               #   automated render checks
+uvx --from "git+https://github.com/leprechaun/kiln#subdirectory=tooling" kiln --help
 ```
 
-To add a new kind, follow **[docs/onboarding.md](docs/onboarding.md)**. It
-walks through each phase with the exact commands to run.
+Or install it once, so `kiln` is on your `PATH`:
+
+```bash
+uv tool install "git+https://github.com/leprechaun/kiln#subdirectory=tooling"
+```
+
+The examples below use plain `kiln`. With `uvx`, put the `uvx --from "…" ` prefix in
+front of it. For a private repo, use `git+ssh://git@github.com/leprechaun/kiln#subdirectory=tooling`.
+Pin a release with `@<tag-or-commit>` after the repo name, and add `--refresh` to
+`uvx` to pick up new commits, since it caches what it has already built. To work on
+Kiln itself, install your checkout in editable mode: `uv tool install --editable ./tooling`.
+
+Start a new, empty project:
+
+```bash
+kiln init my-platform --group platform.example.com
+cd my-platform
+kiln pull-crds              # ① fetch provider CRDs into crds/
+```
+
+Then work through the phases. Every command finds the project by searching
+upward for `kiln.toml`, or takes `--root <path>`:
+
+```bash
+kiln import crds/<group>/<version>/<kind>.yaml   # ② curate a provider schema
+(cd kcl-scripts && kcl test .)                   # ④ unit-test compose functions
+kiln generate-all                                # ⑤ regenerate every Composition + XRD
+kiln render-all                                  #   render each kind against its fixtures
+```
+
+This repo is itself a Kiln project holding the four example kinds, so the same
+commands work from its root. To add a new kind, follow
+**[docs/onboarding.md](docs/onboarding.md)**. It walks through each phase with
+the exact commands to run.
+
+`kiln docs` prints a standalone guide to the whole workflow, written so an LLM
+agent (or a person) can build a kind from nothing. `kiln init` also drops an
+`AGENTS.md` into the new project that tells agents to read it first.
 
 ## Status
 

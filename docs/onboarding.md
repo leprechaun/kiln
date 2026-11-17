@@ -1,5 +1,9 @@
 # Onboarding: using Kiln
 
+> A standalone version of this guide ships with kiln: run `kiln docs`. It has no
+> references to this repo's example kinds, so it works in a project created by
+> `kiln init`. The two overlap, so update both when the workflow changes.
+
 This is a practical, run-these-commands guide to adding or updating a
 composite kind on this platform. It does not explain how any of the tools
 work internally — just what to run, in what order, and what you get out of
@@ -29,12 +33,39 @@ generated from them.
 
 ---
 
+## Before you start — install `kiln` and find a project
+
+Install the CLI once (it puts a `kiln` command on your `PATH`):
+
+```bash
+uv tool install "git+https://github.com/leprechaun/kiln#subdirectory=tooling"
+```
+
+Kiln is not on PyPI, so install it from GitHub like this, or run it without
+installing by putting `uvx --from "git+https://github.com/leprechaun/kiln#subdirectory=tooling"`
+in front of `kiln`. (Working on Kiln itself? Use `uv tool install --editable ./tooling`
+from a checkout.)
+
+Every `kiln` command works on a **project**: the nearest directory, searching
+upward from where you run it, that contains a `kiln.toml`. This repo is one.
+To start a new, empty one instead:
+
+```bash
+kiln init my-platform --group platform.example.com
+cd my-platform
+```
+
+Run the commands below from anywhere inside the project, or pass
+`--root <path>` to point at one from outside.
+
+---
+
 ## Step 1 — Pull provider CRDs
 
 **Command:**
 
 ```bash
-make pull-crds
+kiln pull-crds
 ```
 
 **What it does:** reads every provider listed in
@@ -55,8 +86,7 @@ one's version.
 **Command:**
 
 ```bash
-cd tooling
-uv run import ../crds/<group>/<version>/<kind>.yaml
+kiln import crds/<group>/<version>/<kind>.yaml
 ```
 
 **What it does:** runs `kcl import` (which turns the raw CRD into a KCL
@@ -67,10 +97,17 @@ the result straight onto `kcl-scripts/schemas_providers.k` — the one file
 that accumulates every provider schema every kind needs. Cleans up its own
 scratch directory; nothing to delete by hand.
 
+Importing is safe to repeat: a resource's schemas are replaced in place, and any
+of its schemas the provider no longer generates are dropped, so re-run it after
+a provider version bump. It works with `kcl` 0.12 and 0.13, whose output
+differs; schema names always come out group-prefixed (for example
+`LambdaAwsmUpboundIoV1beta1FunctionURLSpecForProvider`) so two groups' kinds
+with the same name can't collide.
+
 Want to look at the curated schema before committing to appending it?
 
 ```bash
-uv run import ../crds/<group>/<version>/<kind>.yaml --print
+kiln import crds/<group>/<version>/<kind>.yaml --print
 ```
 
 You'll usually need to curate more than one resource per kind — e.g.
@@ -104,6 +141,25 @@ schema breaks. (This isn't visible in `kcl test` with hand-built fixtures; it
 only shows up against a real resource. See `known-gaps.md` if you want the
 full story — you don't need it to keep moving.)
 
+**If your compose function returns status on the XR**, add a `<Kind>Status`
+schema next to `<Kind>Spec` in the same file — e.g. `MyKindStatus`:
+
+```kcl
+schema MyKindStatus:
+    someObservedField?: str
+```
+
+Unlike the spec schema, leave the status schema closed (no `[str]: any`), so
+a misspelt status field fails type checking in the compose function. When
+`kiln generate` finds a `<Kind>Status` schema it normalizes it like the spec
+and declares it under `status` in the XRD. Kinds without one get a
+spec-only XRD, as before. In the compose function, type the returned XR's
+status against it, so a misspelt field fails `kcl test`:
+
+```kcl
+status = schemas_compositions.MyKindStatus {someObservedField = _observed}
+```
+
 ---
 
 ## Step 4 — Write & test the compose function
@@ -126,6 +182,39 @@ compose<Kind> = lambda oxr, ocds -> [any] {
 - `ocds` is a map of what's already been observed about resources you've
   previously emitted, keyed by whatever name you gave them.
 - The function returns the list of resources this kind should compose.
+
+**Reading observed state (`ocds`):** `ocds` is keyed by the
+`composition-resource-name` annotation you gave each resource. Define each name
+once as a constant and use it for both the annotation and the lookup, so the two
+can't drift apart. Read the resource's `atProvider` through its generated
+`<Kind>StatusAtProvider` schema (which `kiln import` brings in with the spec
+schema), so a misspelt field is a compile error and not a silent `None`:
+
+```kcl
+_certificateName = "certificate"
+
+_certificateStatus = lambda atProvider -> schemas_providers.<Prefix>CertificateStatusAtProvider {
+    _status: schemas_providers.<Prefix>CertificateStatusAtProvider = atProvider
+    _status
+}
+_observedAtProvider = ocds[_certificateName]?.Resource?.status?.atProvider
+_observedCertificate = _certificateStatus(_observedAtProvider) if _observedAtProvider else None
+_arn = _observedCertificate?.arn
+```
+
+The typed value is only built once the resource has an `atProvider`. Before
+that (cold start) the whole chain is `None`, and every use of it must stay
+guarded with `if` or `?.`.
+
+Observed state from a nested XR you compose is its XR status, not a provider
+`atProvider`. Read it with plain `?.` and don't cast it to a closed status
+schema: Crossplane adds its own fields (such as `conditions`) to a real XR's
+status, which a closed schema would reject.
+
+The `StatusAtProvider` schemas are closed, so after you bump a provider version
+run `kiln pull-crds` and then `kiln import` again for each resource you use.
+Otherwise a field the new provider reports, which the old schema doesn't know,
+fails at runtime and not in your tests.
 
 **Test as you go:**
 
@@ -150,15 +239,12 @@ another kind's test file.
 **Commands:**
 
 ```bash
-cd tooling
-uv run generate-manifests \
-  --kind MyKind \
-  --spec-schema MyKindSpec \
-  --group platform.kcl-first.io \
-  --plural mykinds \
-  --kcl-dir ../kcl-scripts \
-  --output-dir ../manifests/crossplane-compositions/mykind
+kiln generate MyKind
 ```
+
+It expects the spec schema to be called `MyKindSpec` and the plural to be
+`mykinds`; override either with `--spec-schema` / `--plural`. The API group
+comes from the project's `kiln.toml`.
 
 **What it does:** turns your schema and compose function into a real
 Crossplane `Composition` and `CompositeResourceDefinition` (XRD) — the two
@@ -173,7 +259,7 @@ Once your kind exists, `generate-all` regenerates every kind's manifests in
 one pass (handy after any schema or compose-function change):
 
 ```bash
-uv run generate-all
+kiln generate-all
 ```
 ```
 ✓ IAMRole
@@ -186,7 +272,7 @@ uv run generate-all
 `manifests/` — and render it for real:
 
 ```bash
-uv run render mykind
+kiln render MyKind
 ```
 
 If your compose function reacts to observed state (most do), also render
@@ -194,24 +280,25 @@ with a mocked observed resource (also under `render-fixtures/mykind/`) to
 check the later stages:
 
 ```bash
-uv run render mykind --observed-resources ../render-fixtures/mykind/observed-<something>.yaml
+kiln render MyKind --observed-resources render-fixtures/mykind/observed-<something>.yaml
 ```
 
 Or render every kind at once:
 
 ```bash
-uv run render-all
+kiln render-all
 ```
 
-**Finally**, add an automated version of that render check so it doesn't rely
-on anyone remembering to run it by hand:
+**Finally** (in this repo), add an automated version of that render check so
+it doesn't rely on anyone remembering to run it by hand. The `project`
+fixture is this repo's Kiln project:
 
-```bash
+```python
 # tooling/tests/integration/test_render_mykind.py
-from tooling.render import render
+from kiln.render import render
 
-def test_mykind_composition_renders_successfully():
-    result = render("mykind")
+def test_mykind_composition_renders_successfully(project):
+    result = render(project, "mykind")
     assert result.returncode == 0, result.stderr
 ```
 
@@ -233,14 +320,14 @@ sequenceDiagram
     participant Fixtures as render-fixtures/<kind>/
     participant Manifests as manifests/crossplane-compositions/<kind>/
 
-    You->>CRDs: make pull-crds
-    You->>Schemas: uv run import (per provider resource)
+    You->>CRDs: kiln pull-crds
+    You->>Schemas: kiln import (per provider resource)
     You->>Schemas: hand-write <Kind>Spec
     You->>Compose: hand-write compose<Kind>(oxr, ocds)
     You->>Compose: kcl test . (loop until green)
-    You->>Manifests: uv run generate-all
+    You->>Manifests: kiln generate-all
     You->>Fixtures: write xr.yaml
-    You->>Manifests: uv run render-all
+    You->>Manifests: kiln render-all
     You->>Manifests: add automated render test
 ```
 
