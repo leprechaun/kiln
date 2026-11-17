@@ -111,7 +111,7 @@ def generate_xrd(
     if status_schema is not None:
         properties["status"] = status_schema
     return {
-        "apiVersion": "apiextensions.crossplane.io/v1",
+        "apiVersion": "apiextensions.crossplane.io/v2",
         "kind": "CompositeResourceDefinition",
         "metadata": {"name": f"{plural}.{group}"},
         "spec": {

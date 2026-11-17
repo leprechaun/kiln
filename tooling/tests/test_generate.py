@@ -106,7 +106,7 @@ def test_generate_xrd_wraps_the_schema_under_spec():
 
     xrd = generate_xrd(kind="IAMRole", group="platform.kcl-first.io", plural="iamroles", spec_schema=schema)
 
-    assert xrd["apiVersion"] == "apiextensions.crossplane.io/v1"
+    assert xrd["apiVersion"] == "apiextensions.crossplane.io/v2"
     assert xrd["kind"] == "CompositeResourceDefinition"
     assert xrd["metadata"]["name"] == "iamroles.platform.kcl-first.io"
     assert xrd["spec"]["group"] == "platform.kcl-first.io"
