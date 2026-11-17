@@ -55,7 +55,10 @@ def generate_composition(kind: str, group: str, combined_source: str) -> dict:
     }
 
 
-def generate_xrd(kind: str, group: str, plural: str, spec_schema: dict) -> dict:
+def generate_xrd(kind: str, group: str, plural: str, spec_schema: dict, status_schema: dict | None = None) -> dict:
+    properties = {"spec": spec_schema}
+    if status_schema is not None:
+        properties["status"] = status_schema
     return {
         "apiVersion": "apiextensions.crossplane.io/v1",
         "kind": "CompositeResourceDefinition",
@@ -72,7 +75,7 @@ def generate_xrd(kind: str, group: str, plural: str, spec_schema: dict) -> dict:
                     "schema": {
                         "openAPIV3Schema": {
                             "type": "object",
-                            "properties": {"spec": spec_schema},
+                            "properties": properties,
                         }
                     },
                 }

@@ -1,6 +1,6 @@
 import pytest
 
-from tooling.generate import (
+from kiln.generate import (
     build_combined_kcl_source,
     enforce_naming_convention,
     generate_composition,
@@ -114,3 +114,19 @@ def test_generate_xrd_wraps_the_schema_under_spec():
     assert version["served"] is True
     assert version["referenceable"] is True
     assert version["schema"]["openAPIV3Schema"]["properties"]["spec"] == schema
+
+
+def test_generate_xrd_declares_the_status_schema_under_status_when_given_one():
+    spec_schema = {"type": "object", "properties": {"functionName": {"type": "string"}}}
+    status_schema = {"type": "object", "properties": {"functionUrl": {"type": "string"}}}
+
+    xrd = generate_xrd(
+        kind="LambdaFunction",
+        group="platform.kcl-first.io",
+        plural="lambdafunctions",
+        spec_schema=spec_schema,
+        status_schema=status_schema,
+    )
+
+    properties = xrd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]
+    assert properties == {"spec": spec_schema, "status": status_schema}

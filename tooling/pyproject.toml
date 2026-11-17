@@ -1,7 +1,7 @@
 [project]
-name = "tooling"
+name = "kiln"
 version = "0.1.0"
-description = "Add your description here"
+description = "KCL-first authoring pipeline for Crossplane compositions"
 readme = "README.md"
 authors = [
     { name = 'Laurence "laz" MacGuire', email = "ljm@thoughtworks.com" }
@@ -12,12 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-curate-provider-schema = "tooling.curate:main"
-generate-manifests = "tooling.generate_manifests:main"
-import = "tooling.import_schema:main"
-render = "tooling.render:main"
-generate-all = "tooling.generate_all:main"
-render-all = "tooling.render_all:main"
+kiln = "kiln.cli:run"
 
 [build-system]
 requires = ["uv_build>=0.13.8,<0.14.0"]

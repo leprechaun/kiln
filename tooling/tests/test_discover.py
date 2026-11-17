@@ -1,4 +1,4 @@
-from tooling.discover import discover_kinds
+from kiln.discover import discover_kinds
 
 
 def test_finds_kinds_from_compose_function_names(tmp_path):

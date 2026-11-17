@@ -1,0 +1,43 @@
+from kiln.cli import main
+from kiln.discover import discover_kinds
+from kiln.project import find_project
+
+
+def test_init_creates_an_empty_project_the_other_commands_can_use(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["init", "my-platform"]) == 0
+
+    project = find_project(tmp_path / "my-platform")
+    assert project.group == "platform.example.com"
+    assert discover_kinds(project.kcl_scripts_dir) == []
+    assert main(["--root", str(project.root), "generate-all"]) == 0
+    assert main(["--root", str(project.root), "render-all"]) == 0
+
+
+def test_init_uses_the_requested_api_group(tmp_path):
+    assert main(["init", str(tmp_path / "p"), "--group", "platform.acme.io"]) == 0
+
+    assert find_project(tmp_path / "p").group == "platform.acme.io"
+
+
+def test_init_refuses_to_overwrite_an_existing_project(tmp_path, capsys):
+    (tmp_path / "kiln.toml").write_text('group = "platform.mine.io"\n')
+
+    assert main(["init", str(tmp_path)]) != 0
+    assert "already a Kiln project" in capsys.readouterr().err
+    assert find_project(tmp_path).group == "platform.mine.io"
+
+
+def test_init_ships_none_of_the_example_kinds(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    contents = "\n".join(f.read_text() for f in (tmp_path / "p").rglob("*") if f.is_file()).lower()
+    for kind in ("iamrole", "lambdafunction", "dnsvalidatedcertificate", "staticwebsite"):
+        assert kind not in contents
+
+
+def test_init_tells_agents_to_read_the_guide_first(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    assert "kiln docs" in (tmp_path / "p" / "AGENTS.md").read_text()

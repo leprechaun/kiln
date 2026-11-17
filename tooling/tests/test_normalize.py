@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from tooling.normalize import normalize_openapi_schema
+from kiln.normalize import normalize_openapi_schema
 
 PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_defaults_probe.json").read_text())
 IAMROLE = json.loads((Path(__file__).parent / "fixtures" / "openapi_iamrole.json").read_text())
