@@ -72,6 +72,10 @@ kiln pull-crds
 `manifests/crossplane-providers/*.yaml` and downloads each one's CRDs
 straight from its package — no live cluster, no AWS credentials.
 
+The XRD is `Namespaced` unless you say otherwise. A kind that composes cluster-scoped resources needs
+`scope = "Cluster"`: set it for the project in `kiln.toml`, per kind under `[kinds.MyKind]`, or for one
+run with `kiln generate MyKind --scope Cluster`.
+
 **What you get:** a `crds/` directory full of raw CRD YAML, one file per AWS
 resource, organized by `<group>/<version>/<kind>.yaml`.
 
