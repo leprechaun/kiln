@@ -99,7 +99,7 @@ def test_jsonnet_format_imports_the_kcl_source_instead_of_embedding_it(tmp_path,
 
 def _xrd_scope(tmp_path, monkeypatch, **kwargs):
     kcl_dir = tmp_path / "kcl"
-    kcl_dir.mkdir()
+    kcl_dir.mkdir(exist_ok=True)
     _write_kcl_dir(kcl_dir)
     monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
     generate_manifests_for(
@@ -115,3 +115,28 @@ def test_xrd_scope_is_namespaced_unless_told_otherwise(tmp_path, monkeypatch):
 
 def test_xrd_scope_can_be_cluster(tmp_path, monkeypatch):
     assert _xrd_scope(tmp_path, monkeypatch, scope="Cluster") == "Cluster"
+
+
+def test_changing_a_kinds_scope_warns_that_xrd_scope_is_immutable(tmp_path, monkeypatch, capsys):
+    _xrd_scope(tmp_path, monkeypatch, scope="Namespaced")
+    assert "immutable" not in capsys.readouterr().err
+
+    _xrd_scope(tmp_path, monkeypatch, scope="Cluster")
+    err = capsys.readouterr().err
+    assert "scope changed from Namespaced to Cluster" in err
+    assert "immutable" in err
+
+    _xrd_scope(tmp_path, monkeypatch, scope="Cluster")
+    assert capsys.readouterr().err == ""
+
+
+def test_yaml_composition_embeds_the_kcl_as_a_readable_literal_block(tmp_path, monkeypatch):
+    _xrd_scope(tmp_path, monkeypatch)
+
+    text = (tmp_path / "out" / "composition.yaml").read_text()
+    composition = yaml.safe_load(text)
+
+    assert "        source: |\n          composeWidget = lambda oxr, ocds" in text
+    source = composition["spec"]["pipeline"][0]["input"]["spec"]["source"]
+    assert source.startswith("composeWidget")
+    assert "\\n" not in text  # no escaped newlines: the code is laid out as real lines

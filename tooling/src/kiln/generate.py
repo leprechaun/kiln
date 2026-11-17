@@ -59,7 +59,7 @@ def build_combined_kcl_source(schema_modules: dict[str, str], compose_source: st
     modules = [_strip_local_imports(s) for s in schema_modules.values()]
     compose = _strip_local_imports(compose_source)
     parts = [*_shake_schemas(modules, compose), compose]
-    combined = _BLANK_RUNS.sub("\n\n", "\n".join(parts))
+    combined = _BLANK_RUNS.sub("\n\n", "\n".join(parts)).lstrip("\n")
 
     for module_name in schema_modules:
         combined = re.sub(rf"\b{re.escape(module_name)}\.", "", combined)

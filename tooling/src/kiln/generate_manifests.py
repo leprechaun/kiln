@@ -1,6 +1,7 @@
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -24,13 +25,34 @@ def _run_kcl_doc_generate(kcl_dir: Path) -> dict:
         shutil.rmtree(docs_dir, ignore_errors=True)
 
 
+class _LiteralStr(str):
+    """A string YAML should write as a `|` block, so embedded KCL stays readable."""
+
+
+class _ReadableDumper(yaml.SafeDumper):
+    pass
+
+
+_ReadableDumper.add_representer(
+    _LiteralStr, lambda dumper, data: dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="|")
+)
+
+
+def _existing_scope(xrd_file: Path) -> str | None:
+    if not xrd_file.is_file():
+        return None
+    return (yaml.safe_load(xrd_file.read_text()) or {}).get("spec", {}).get("scope")
+
+
 _SOURCE_PLACEHOLDER = "__KILN_KCL_SOURCE__"
 COMPOSITION_KCL = "composition.k"
 
 
 def _write_composition(composition: dict, output_format: str, output_dir: Path) -> None:
     if output_format == "yaml":
-        (output_dir / "composition.yaml").write_text(yaml.dump(composition, sort_keys=False))
+        [step] = [s for s in composition["spec"]["pipeline"] if s["step"] == "compose"]
+        step["input"]["spec"]["source"] = _LiteralStr(step["input"]["spec"]["source"])
+        (output_dir / "composition.yaml").write_text(yaml.dump(composition, Dumper=_ReadableDumper, sort_keys=False))
         return
 
     if output_format != "jsonnet":
@@ -72,5 +94,12 @@ def generate_manifests_for(
     xrd = generate_xrd(kind=kind, group=group, plural=plural, spec_schema=schema, status_schema=status_schema, scope=scope)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    previous_scope = _existing_scope(output_dir / "xrd.yaml")
     _write_composition(composition, output_format, output_dir)
     (output_dir / "xrd.yaml").write_text(yaml.dump(xrd, sort_keys=False))
+    if previous_scope and previous_scope != scope:
+        print(
+            f"kiln: {kind} scope changed from {previous_scope} to {scope}. An XRD's scope is immutable: "
+            f"delete the XRD (and its XRs) on the cluster before applying this one.",
+            file=sys.stderr,
+        )
