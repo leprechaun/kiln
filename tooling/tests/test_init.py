@@ -68,3 +68,40 @@ def test_init_agents_file_states_what_kiln_is_for(tmp_path):
     intent = agents.split("## What Kiln is for", 1)[1].split("\n## ", 1)[0].lower()
     for idea in ("data structures", "cloud components", "seconds", "yaml", "sample data"):
         assert idea in intent
+
+
+def test_init_installs_the_bundled_skills_for_agents_and_claude(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    for skill in ("kiln", "kcl-primer", "crossplane-intro"):
+        assert (tmp_path / "p" / ".agents" / "skills" / skill / "SKILL.md").is_file()
+        assert (tmp_path / "p" / ".claude" / "skills" / skill / "SKILL.md").is_file()
+
+
+def test_install_skills_keeps_local_edits_unless_forced(tmp_path):
+    main(["init", str(tmp_path / "p")])
+    skill = tmp_path / "p" / ".agents" / "skills" / "kiln" / "SKILL.md"
+    skill.write_text("local edit")
+
+    assert main(["--root", str(tmp_path / "p"), "install-skills"]) == 0
+    assert skill.read_text() == "local edit"
+
+    assert main(["--root", str(tmp_path / "p"), "install-skills", "--force"]) == 0
+    assert skill.read_text().startswith("---\nname: kiln")
+
+
+def test_init_writes_the_chosen_format_and_defaults_to_yaml(tmp_path):
+    main(["init", str(tmp_path / "plain")])
+    main(["init", str(tmp_path / "argo"), "--format", "jsonnet"])
+
+    assert find_project(tmp_path / "plain").format == "yaml"
+    assert find_project(tmp_path / "argo").format == "jsonnet"
+    assert 'format = "yaml"' in (tmp_path / "plain" / "kiln.toml").read_text()
+
+
+def test_init_rejects_an_unknown_format(tmp_path):
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main(["init", str(tmp_path / "p"), "--format", "cue"])
+    assert not (tmp_path / "p").exists()

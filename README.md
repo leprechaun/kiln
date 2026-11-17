@@ -83,7 +83,7 @@ flowchart TD
     sc --> fn
     fn --> tests["&lt;kind&gt;_test.k"]
     sc -->|kcl doc generate + normalize| xrd["xrd.yaml"]
-    fn -->|flatten into function-kcl source| comp["composition.yaml"]
+    fn -->|flatten into function-kcl source| comp["composition.yaml<br/>(or composition.jsonnet + composition.k)"]
     xrd --> out["manifests/crossplane-compositions/&lt;kind&gt;/"]
     comp --> out
     out -->|crossplane composition render| fixtures["render-fixtures/&lt;kind&gt;/"]

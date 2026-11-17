@@ -69,3 +69,29 @@ def test_a_kind_without_a_status_schema_gets_an_xrd_that_only_declares_spec(tmp_
 
     properties = xrd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]
     assert list(properties) == ["spec"]
+
+
+def test_jsonnet_format_imports_the_kcl_source_instead_of_embedding_it(tmp_path, monkeypatch):
+    kcl_dir = tmp_path / "kcl"
+    kcl_dir.mkdir()
+    _write_kcl_dir(kcl_dir)
+    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
+    output_dir = tmp_path / "out"
+
+    generate_manifests_for(
+        kind="Widget",
+        spec_schema="WidgetSpec",
+        group="platform.kcl-first.io",
+        plural="widgets",
+        kcl_dir=kcl_dir,
+        output_dir=output_dir,
+        output_format="jsonnet",
+    )
+
+    jsonnet = (output_dir / "composition.jsonnet").read_text()
+    assert "source: " not in jsonnet
+    assert '"source": importstr \'composition.k\'' in jsonnet
+    assert "composeWidget" not in jsonnet
+    assert "composeWidget" in (output_dir / "composition.k").read_text()
+    assert not (output_dir / "composition.yaml").exists()
+    assert (output_dir / "xrd.yaml").exists()

@@ -5,7 +5,14 @@ from pathlib import Path
 MARKER = "kiln.toml"
 
 
+FORMATS = ("yaml", "jsonnet")
+
+
 class ProjectNotFound(Exception):
+    pass
+
+
+class InvalidConfig(Exception):
     pass
 
 
@@ -13,6 +20,7 @@ class ProjectNotFound(Exception):
 class Project:
     root: Path
     group: str
+    format: str = "yaml"
 
     @property
     def kcl_scripts_dir(self) -> Path:
@@ -45,5 +53,8 @@ def find_project(start: Path, root: Path | None = None) -> Project:
         marker = candidate / MARKER
         if marker.is_file():
             config = tomllib.loads(marker.read_text())
-            return Project(root=candidate, group=config["group"])
+            output_format = config.get("format", "yaml")
+            if output_format not in FORMATS:
+                raise InvalidConfig(f"{MARKER}: format must be one of {', '.join(FORMATS)}, got {output_format!r}")
+            return Project(root=candidate, group=config["group"], format=output_format)
     raise ProjectNotFound(f"no {MARKER} found in {root or start}" + ("" if root else " or any parent directory"))

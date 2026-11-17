@@ -252,7 +252,9 @@ files Crossplane actually needs to run this kind for real.
 
 **What you get:** `composition.yaml` and `xrd.yaml` under
 `manifests/crossplane-compositions/mykind/` — and *only* those two files
-live there. `manifests/` is deploy-only: everything under it is meant to be
+live there. (If `kiln.toml` sets `format = "jsonnet"`, you get `composition.jsonnet`,
+`composition.k` and `xrd.yaml` instead, for tools like ArgoCD that evaluate jsonnet; start such a
+project with `kiln init --format jsonnet`. `kiln render` then needs the `jsonnet` binary.) `manifests/` is deploy-only: everything under it is meant to be
 pushed straight to a cluster, nothing else belongs there.
 
 Once your kind exists, `generate-all` regenerates every kind's manifests in

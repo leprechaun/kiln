@@ -24,8 +24,36 @@ def _run_kcl_doc_generate(kcl_dir: Path) -> dict:
         shutil.rmtree(docs_dir, ignore_errors=True)
 
 
+_SOURCE_PLACEHOLDER = "__KILN_KCL_SOURCE__"
+COMPOSITION_KCL = "composition.k"
+
+
+def _write_composition(composition: dict, output_format: str, output_dir: Path) -> None:
+    if output_format == "yaml":
+        (output_dir / "composition.yaml").write_text(yaml.dump(composition, sort_keys=False))
+        return
+
+    if output_format != "jsonnet":
+        raise ValueError(f"unknown output format {output_format!r}")
+
+    [step] = [s for s in composition["spec"]["pipeline"] if s["step"] == "compose"]
+    source = step["input"]["spec"]["source"]
+    step["input"]["spec"]["source"] = _SOURCE_PLACEHOLDER
+    jsonnet = json.dumps(composition, indent=2).replace(
+        json.dumps(_SOURCE_PLACEHOLDER), f"importstr '{COMPOSITION_KCL}'"
+    )
+    (output_dir / COMPOSITION_KCL).write_text(source)
+    (output_dir / "composition.jsonnet").write_text(jsonnet + "\n")
+
+
 def generate_manifests_for(
-    kind: str, spec_schema: str, group: str, plural: str, kcl_dir: Path, output_dir: Path
+    kind: str,
+    spec_schema: str,
+    group: str,
+    plural: str,
+    kcl_dir: Path,
+    output_dir: Path,
+    output_format: str = "yaml",
 ) -> None:
     compose_source = (kcl_dir / f"{kind.lower()}.k").read_text()
     providers_source = (kcl_dir / "schemas_providers.k").read_text()
@@ -43,5 +71,5 @@ def generate_manifests_for(
     xrd = generate_xrd(kind=kind, group=group, plural=plural, spec_schema=schema, status_schema=status_schema)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "composition.yaml").write_text(yaml.dump(composition, sort_keys=False))
+    _write_composition(composition, output_format, output_dir)
     (output_dir / "xrd.yaml").write_text(yaml.dump(xrd, sort_keys=False))

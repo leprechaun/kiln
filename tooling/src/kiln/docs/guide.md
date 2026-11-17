@@ -107,12 +107,12 @@ layout is fixed:
 
 | Path | Holds |
 |------|-------|
-| `kiln.toml` | the API group for your XRs: `group = "platform.example.com"` |
+| `kiln.toml` | the API group for your XRs (`group = "platform.example.com"`) and, optionally, the output format (`format = "yaml"` or `"jsonnet"`) |
 | `manifests/crossplane-providers/` | one Provider manifest per provider; `pull-crds` reads these |
 | `manifests/functions.yaml` | the composition functions rendering needs (already set up) |
 | `crds/` | downloaded CRDs (generated, git-ignored) |
 | `kcl-scripts/` | your KCL: schemas, compose functions, tests |
-| `manifests/crossplane-compositions/<kind>/` | generated `composition.yaml` and `xrd.yaml`; deploy these, put nothing else here |
+| `manifests/crossplane-compositions/<kind>/` | generated `composition.yaml` (or `composition.jsonnet` + `composition.k`, see "Output format") and `xrd.yaml`; deploy these, put nothing else here |
 | `render-fixtures/<kind>/` | sample XRs and mocked observed resources for rendering |
 
 Arguments you pass to a command (like a CRD path) are relative to where you run
@@ -345,6 +345,27 @@ This writes `composition.yaml` and `xrd.yaml` under
 `manifests/crossplane-compositions/<kind lowercased>/`. It expects the spec schema
 `<Kind>Spec` (and optionally `<Kind>Status`); the XRD's plural is the lowercased kind
 plus `s`, its version is `v1alpha1`, and its API group comes from `kiln.toml`.
+
+### Output format
+
+By default the Composition is plain YAML with the KCL embedded in one `source:` string.
+Set `format = "jsonnet"` in `kiln.toml` for a tool that evaluates jsonnet itself (ArgoCD
+does):
+
+```toml
+group = "platform.example.com"
+format = "jsonnet"
+```
+
+Generation then writes `composition.jsonnet` and `composition.k` instead of `composition.yaml`.
+The jsonnet file holds the Composition with `"source": importstr 'composition.k'`; the `.k` file
+is the generated, flattened KCL. `xrd.yaml` is unchanged. Deploy all three files from the
+directory. Both generated files are output: do not edit them.
+
+`kiln render` and `kiln render-all` work in both modes. In jsonnet mode they evaluate
+`composition.jsonnet` with the `jsonnet` binary (go-jsonnet or C++ jsonnet, on your `PATH`) into a
+temporary file and render that, so you render what you would deploy. Without `jsonnet` installed,
+render fails; that is not a pass. Start a project in this mode with `kiln init --format jsonnet`.
 
 Then render the Composition for real. Write a sample XR in
 `render-fixtures/<kind lowercased>/xr.yaml`:

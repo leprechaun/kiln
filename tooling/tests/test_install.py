@@ -20,3 +20,4 @@ def test_installed_kiln_can_create_and_build_an_empty_project(tmp_path):
     assert "Kiln guide" in docs.stdout
     assert (tmp_path / "my-platform" / "manifests" / "functions.yaml").is_file()
     assert (tmp_path / "my-platform" / ".gitignore").is_file()
+    assert (tmp_path / "my-platform" / ".agents" / "skills" / "kiln" / "SKILL.md").is_file()

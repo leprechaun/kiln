@@ -6,10 +6,11 @@ from kiln.generate_all import generate_all
 from kiln.generate_manifests import generate_manifests_for
 from kiln.import_schema import import_schema
 from kiln.init import DEFAULT_GROUP, init_project
-from kiln.project import ProjectNotFound, find_project
+from kiln.project import FORMATS, InvalidConfig, ProjectNotFound, find_project
 from kiln.pull_crds import pull_crds
 from kiln.render import render
 from kiln.render_all import render_all
+from kiln.skills import install_skills
 
 
 _GUIDE = Path(__file__).parent / "docs" / "guide.md"
@@ -31,6 +32,7 @@ def _generate(project, args) -> int:
         plural=args.plural or f"{args.kind.lower()}s",
         kcl_dir=project.kcl_scripts_dir,
         output_dir=project.compositions_dir / args.kind.lower(),
+        output_format=project.format,
     )
     return 0
 
@@ -53,6 +55,18 @@ def _parser() -> argparse.ArgumentParser:
     init_cmd = commands.add_parser("init", help="Create a new, empty Kiln project")
     init_cmd.add_argument("directory", type=Path, help="Where to create the project")
     init_cmd.add_argument("--group", default=DEFAULT_GROUP, help=f"API group for the project's XRs (default: {DEFAULT_GROUP})")
+    init_cmd.add_argument(
+        "--format",
+        choices=FORMATS,
+        default="yaml",
+        help="Composition output format: yaml (KCL embedded) or jsonnet (importstr, for ArgoCD). Default: yaml",
+    )
+
+    skills_cmd = commands.add_parser(
+        "install-skills", help="Install (or refresh) the agent skills bundled with Kiln into .agents/skills/"
+    )
+    skills_cmd.add_argument("--force", action="store_true", help="Overwrite skills that are already installed")
+    skills_cmd.set_defaults(handler=lambda project, args: install_skills(project.root, force=args.force))
 
     commands.add_parser(
         "pull-crds", help="Download CRDs for every provider in manifests/crossplane-providers/"
@@ -100,10 +114,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "init":
-        return init_project(args.directory, group=args.group)
+        return init_project(args.directory, group=args.group, output_format=args.format)
 
     try:
         project = find_project(Path.cwd(), root=args.root)
+    except InvalidConfig as e:
+        print(f"kiln: {e}", file=sys.stderr)
+        return 2
     except ProjectNotFound as e:
         print(f"kiln: {e}", file=sys.stderr)
         return 2

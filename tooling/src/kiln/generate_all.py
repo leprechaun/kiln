@@ -14,6 +14,7 @@ def generate_all(project: Project) -> int:
                 plural=f"{kind.lower()}s",
                 kcl_dir=project.kcl_scripts_dir,
                 output_dir=project.compositions_dir / kind.lower(),
+                output_format=project.format,
             )
             print(f"✓ {kind}")
         except Exception as e:

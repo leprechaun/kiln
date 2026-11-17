@@ -33,6 +33,10 @@ uv tool install "git+https://github.com/leprechaun/kiln#subdirectory=tooling"
 Before doing anything else, run `kiln docs` and read all of it. It explains the
 whole workflow, the project layout, and the pitfalls that tests alone will not catch.
 
+The `kiln`, `kcl-primer` and `crossplane-intro` skills in `.agents/skills/` summarise the
+order of work, KCL syntax and Crossplane concepts. Refresh them after upgrading Kiln with
+`kiln install-skills --force`.
+
 ## Rules
 
 1. **Tests are part of the deliverable, not an extra.** For every kind you create,

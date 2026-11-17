@@ -1,6 +1,6 @@
 import pytest
 
-from kiln.project import ProjectNotFound, find_project
+from kiln.project import InvalidConfig, ProjectNotFound, find_project
 
 
 def test_finds_project_root_from_a_nested_directory(tmp_path):
@@ -39,3 +39,18 @@ def test_reads_api_group_from_kiln_toml(tmp_path):
     (tmp_path / "kiln.toml").write_text('group = "platform.example.io"\n')
 
     assert find_project(tmp_path).group == "platform.example.io"
+
+
+def test_format_defaults_to_yaml_and_can_be_set_to_jsonnet(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "platform.example.io"\n')
+    assert find_project(tmp_path).format == "yaml"
+
+    (tmp_path / "kiln.toml").write_text('group = "platform.example.io"\nformat = "jsonnet"\n')
+    assert find_project(tmp_path).format == "jsonnet"
+
+
+def test_unknown_format_is_rejected(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "platform.example.io"\nformat = "cue"\n')
+
+    with pytest.raises(InvalidConfig, match="format must be one of"):
+        find_project(tmp_path)

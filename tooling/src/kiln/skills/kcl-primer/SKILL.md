@@ -1,0 +1,106 @@
+---
+name: kcl-primer
+description: >
+  KCL syntax for Kiln compose functions: dicts, schemas, lambdas, optional chaining, tests, and
+  common compile errors. Use when writing KCL, or when kcl test / kiln render reports a syntax
+  or type error.
+---
+
+# KCL primer
+
+KCL is a configuration language (closer to HCL than Python). Full reference:
+https://www.kcl-lang.io/docs/user_docs/guides/. For Kiln workflow and rules see `kiln docs`.
+
+## Syntax that trips people up
+
+**Dicts and schema instances: newlines, no commas.**
+
+```kcl
+_bucket = {
+    apiVersion = "s3.aws.m.upbound.io/v1beta1"
+    metadata.annotations = {"krm.kcl.dev/composition-resource-name" = "bucket"}
+}
+```
+
+- Both `key = value` and `key: value` are valid in a dict. They differ: `=` overrides on
+  merge, `:` unions. Kiln code uses `=`. Dotted keys (`spec.forProvider = ...`) build nested dicts.
+- A JSON one-liner with commas is valid, but a stray comma between multi-line entries is not.
+- Locals starting with `_` are private and mutable; use them for intermediate values.
+- `type` is reserved: write `$type`. It serialises back to `type`.
+- Type annotations are valid only on locals (`x: T = ...`), not on dotted paths or dict keys. Use the
+  constructor form instead: `spec.forProvider = T { ... }`.
+- No leading-operator line continuation (a line starting with `+` is a new statement).
+- `type X = A | B` must be on one line.
+- Interpolation: `"arn:aws:s3:::${bucketName}/*"`. Concatenation with `+` also works.
+
+## The compose function
+
+```kcl
+import .schemas_compositions
+import .schemas_providers
+
+composeThing = lambda oxr, ocds -> [any] {
+    spec: schemas_compositions.ThingSpec = oxr.spec
+    _thing = {...}
+    [_thing]            # last expression is the return value
+}
+```
+
+The name must be exactly `compose<Kind>` with `lambda oxr, ocds`. Import only `.schemas_compositions`,
+`.schemas_providers` and the standard library; Kiln flattens files into one source string.
+
+## Schemas
+
+```kcl
+schema ThingSpec:
+    name: str                 # required
+    count: int = 5            # default
+    tags?: {str:str}          # optional
+    [str]: any                # always last on XR spec schemas
+```
+
+Schemas can carry validation: a `check:` block (`count > 0, "count must be positive"`).
+Indentation is any consistent width; imported schemas use 4 spaces.
+
+## Optional values and observed state
+
+```kcl
+_arn = ocds["bucket"]?.Resource?.status?.atProvider?.arn   # None before it is observed
+_policy = [_policyResource] if _arn else []                # gate dependent resources
+region = spec.region or "us-east-1"
+```
+
+Build typed values (schemas with required fields) inside the same `if` that gates them.
+
+## Tests
+
+KCL has `assert` and a built-in runner. Put `test_*` lambdas in `kcl-scripts/<kind>_test.k`
+and run `kcl test .` from `kcl-scripts/`:
+
+```kcl
+import .thing
+
+test_builds_one_resource = lambda {
+    result = thing.composeThing({spec = {name = "x"}}, {})
+    assert len(result) == 1, "expected exactly one resource"
+}
+```
+
+Top-level names in test files share one package: prefix helpers with the kind (`_thingBaseOxr`).
+The required test list is in `kiln docs` under "Tests".
+
+## Common errors
+
+| Error | Usual cause |
+|-------|-------------|
+| `expected one of ["}"] got ,` | Comma between multi-line dict entries |
+| `unexpected token 'indent'` | Inconsistent indentation, or a continuation line starting with an operator |
+| `name 'X' is not defined` | Typo, or the name is defined in a file you cannot import (one-package rule) |
+| Type mismatch on `forProvider` | Field name or type differs from the imported schema; read `schemas_providers.k` |
+| Passes `kcl test`, rejected by render | Spec schema is closed; add `[str]: any` |
+| Unknown attribute on `StatusAtProvider` | Those schemas are closed; check the real field names |
+
+## Examples
+
+Before inventing a pattern, read the existing `kcl-scripts/<kind>.k` and `<kind>_test.k` files in
+this project. They show the conventions already in use (observed-state staging, status, child XRs).
