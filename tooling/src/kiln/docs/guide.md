@@ -10,6 +10,23 @@ Terms: an **XR** is the composite resource a consumer creates (it has `spec` and
 is what you want, its `status.atProvider` is what exists). `oxr` is the observed XR
 passed into your function; `ocds` is a map of the composed resources observed so far.
 
+## What Kiln is for
+
+Kiln lets you spend your effort on the data structures and the cloud components you are
+integrating, and on nothing else:
+
+- **You work on the shapes and the mapping.** What should a consumer be able to ask for
+  (the XR spec), and which provider resources does that become (the compose function)?
+  Provider schemas are imported and typed, so you work against real field names, not guesses.
+- **Your feedback loop is unit tests that run in seconds.** The compose function is a plain
+  function from data to data, so `kcl test .` exercises it with no cluster, no Docker and no
+  credentials. This is the point of the design, not an extra. Iterate with tests, and render
+  only to confirm.
+- **YAML is mechanised away.** You do not write or edit the Composition or the XRD; Kiln
+  generates them from your schemas and function. The only YAML you write is small sample data
+  for rendering (an example XR and mocked observed resources). If you feel the urge to
+  hand-edit a generated file, something upstream is wrong: fix the schema or the function.
+
 ## Ground rules
 
 1. **Tests are part of the deliverable.** For every kind you create, write

@@ -3,6 +3,15 @@
 This is a Kiln project: Crossplane compositions authored in KCL, with the
 provider schemas, Composition and XRD generated for you.
 
+## What Kiln is for
+
+You are here to work on data structures and cloud components, not on YAML. Describe what
+consumers can ask for and which provider resources that becomes, write that as a KCL
+function, and prove it with unit tests that run in seconds (`kcl test .`, with no cluster,
+Docker or credentials). Kiln generates the Composition and the XRD for you: never write or
+hand-edit them. The only YAML you write is small sample data for rendering. Tests are the
+main feedback loop, which is why the rules below make them mandatory.
+
 ## Running kiln
 
 Kiln is not published on PyPI. It is installed from GitHub with `uv`. If `kiln` is

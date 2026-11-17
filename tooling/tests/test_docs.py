@@ -84,3 +84,12 @@ def test_the_guide_says_a_project_without_tests_is_not_done(tmp_path, monkeypatc
 
     verify = guide.split("## Verify your work", 1)[1]
     assert "no tests" in verify.lower()
+
+
+def test_the_guide_states_what_kiln_is_for(tmp_path, monkeypatch, capsys):
+    guide = _guide(capsys, monkeypatch, tmp_path)
+
+    assert "## What Kiln is for" in guide
+    intent = guide.split("## What Kiln is for", 1)[1].split("\n## ", 1)[0].lower()
+    for idea in ("data structures", "cloud components", "seconds", "yaml", "sample data"):
+        assert idea in intent

@@ -58,3 +58,13 @@ def test_init_agents_file_says_how_to_install_and_run_kiln(tmp_path):
     assert "not published on PyPI" in agents
     assert 'uvx --from "git+https://github.com/leprechaun/kiln#subdirectory=tooling" kiln' in agents
     assert "uv tool install" in agents
+
+
+def test_init_agents_file_states_what_kiln_is_for(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    agents = (tmp_path / "p" / "AGENTS.md").read_text()
+    assert "## What Kiln is for" in agents
+    intent = agents.split("## What Kiln is for", 1)[1].split("\n## ", 1)[0].lower()
+    for idea in ("data structures", "cloud components", "seconds", "yaml", "sample data"):
+        assert idea in intent
