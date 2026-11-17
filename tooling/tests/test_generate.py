@@ -1,10 +1,15 @@
+import shutil
+import subprocess
+
 import pytest
+import yaml
 
 from kiln.generate import (
     build_combined_kcl_source,
     enforce_naming_convention,
     generate_composition,
     generate_xrd,
+    source_contributors,
 )
 
 
@@ -209,3 +214,61 @@ def test_generate_xrd_defaults_to_namespaced_and_accepts_a_cluster_scope():
 
     assert generate_xrd(**args)["spec"]["scope"] == "Namespaced"
     assert generate_xrd(**args, scope="Cluster")["spec"]["scope"] == "Cluster"
+
+
+_MIXED_COMPOSE = """\
+schema FP:
+    region: str
+
+composeSite = lambda oxr, ocds -> [any] {
+    [
+        {apiVersion = "s3.aws.m.upbound.io/v1beta1", kind = "Bucket", spec.forProvider = FP {region = "a"}}
+        {apiVersion = "s3.aws.m.upbound.io/v1beta1", kind = "Bucket", spec.forProvider.region = "b", spec.providerConfigRef = {kind = "ProviderConfig", name = "mine"}}
+        {apiVersion = "g.io/v1alpha1", kind = "Site", metadata.name = "site", status.ready = True}
+        {apiVersion = "g.io/v1alpha1", kind = "Child", spec.forProvider.x = 1}
+        {apiVersion = "v1", kind = "ConfigMap", data.a = "b"}
+    ]
+}
+"""
+
+
+def _run_generated(tmp_path, provider_config):
+    composition = generate_composition(
+        kind="Site", group="g.io", combined_source=_MIXED_COMPOSE, provider_config=provider_config
+    )
+    source = composition["spec"]["pipeline"][0]["input"]["spec"]["source"]
+    main = tmp_path / "main.k"
+    main.write_text(source)
+    result = subprocess.run(
+        ["kcl", "run", str(main), "-D", "params={\"oxr\": {}, \"ocds\": {}}"], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    return [item.get("spec", {}).get("providerConfigRef") for item in yaml.safe_load(result.stdout)["items"]]
+
+
+@pytest.mark.skipif(shutil.which("kcl") is None, reason="needs kcl on PATH")
+def test_a_configured_provider_config_is_given_to_managed_resources_that_do_not_set_one(tmp_path):
+    refs = _run_generated(tmp_path, {"kind": "ClusterProviderConfig", "name": "pod-identity"})
+
+    assert refs == [
+        {"kind": "ClusterProviderConfig", "name": "pod-identity"},  # a managed resource, typed or not
+        {"kind": "ProviderConfig", "name": "mine"},  # one it sets itself is kept
+        None,  # the XR, returned to report status
+        None,  # a child XR in the project's own group
+        None,  # not a managed resource
+    ]
+
+
+@pytest.mark.skipif(shutil.which("kcl") is None, reason="needs kcl on PATH")
+def test_without_a_provider_config_composed_resources_are_left_alone(tmp_path):
+    assert _run_generated(tmp_path, None) == [None, {"kind": "ProviderConfig", "name": "mine"}, None, None, None]
+
+
+def test_source_contributors_lists_the_largest_schemas_and_the_rest_of_the_source():
+    big = "schema Big:\n" + "".join(f"    field{i}?: str\n" for i in range(50))
+    source = "schema Small:\n    a?: str\n\n" + big + "\ncomposeSite = lambda oxr, ocds -> [any] {\n  []\n}\n"
+
+    contributors = source_contributors(source)
+
+    assert [name for name, _ in contributors] == ["schema Big", "compose function and other code", "schema Small"]
+    assert sum(size for _, size in contributors) == len(source)

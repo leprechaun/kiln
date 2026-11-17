@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from kiln.docs import render_docs, topic_names
 from kiln.generate_all import generate_all
 from kiln.generate_manifests import generate_manifests_for
 from kiln.import_schema import import_schema
@@ -13,7 +14,7 @@ from kiln.render_all import render_all
 from kiln.skills import install_skills
 
 
-_GUIDE = Path(__file__).parent / "docs" / "guide.md"
+_NO_VALIDATE_HELP = "Skip checking rendered resources' scope and shape against crds/ and the generated XRDs"
 
 
 def _import(project, args) -> int:
@@ -34,13 +35,13 @@ def _generate(project, args) -> int:
         output_dir=project.compositions_dir / args.kind.lower(),
         output_format=project.format,
         scope=args.scope or project.scope_for(args.kind),
+        provider_config=project.provider_config_for(args.kind),
     )
     return 0
 
 
 def _render(project, args) -> int:
-    extra_args = ["--observed-resources", args.observed_resources] if args.observed_resources else []
-    result = render(project, args.kind, *extra_args)
+    result = render(project, args.kind, observed_resources=args.observed_resources, validate=not args.no_validate)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode
@@ -51,7 +52,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", type=Path, help="Project root (default: search upward from the current directory for kiln.toml)")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    commands.add_parser("docs", help="Print the Kiln guide (written for LLM agents as well as people)")
+    docs_cmd = commands.add_parser(
+        "docs", help="Print the Kiln guide (written for LLM agents as well as people); add a topic for more"
+    )
+    docs_cmd.add_argument("topic", nargs="?", help="A topic from the list at the end of `kiln docs`, or `all`")
 
     init_cmd = commands.add_parser("init", help="Create a new, empty Kiln project")
     init_cmd.add_argument("directory", type=Path, help="Where to create the project")
@@ -108,12 +112,20 @@ def _parser() -> argparse.ArgumentParser:
 
     render_cmd = commands.add_parser("render", help="Render one kind's Composition against its sample XR")
     render_cmd.add_argument("kind", help="Composite kind, e.g. IAMRole")
-    render_cmd.add_argument("--observed-resources", help="Path to mocked observed resources, passed through to crossplane")
+    render_cmd.add_argument(
+        "--observed-resources",
+        type=Path,
+        help="Mocked observed resources: a multi-document YAML file, or a directory whose .yaml/.yml files are all loaded",
+    )
+    render_cmd.add_argument("--no-validate", action="store_true", help=_NO_VALIDATE_HELP)
     render_cmd.set_defaults(handler=_render)
 
-    commands.add_parser(
-        "render-all", help="Render every kind against its sample XR"
-    ).set_defaults(handler=lambda project, args: render_all(project))
+    render_all_cmd = commands.add_parser(
+        "render-all",
+        help="Render every kind against its sample XR, cold and then with each render-fixtures/<kind>/observed-*.yaml",
+    )
+    render_all_cmd.add_argument("--no-validate", action="store_true", help=_NO_VALIDATE_HELP)
+    render_all_cmd.set_defaults(handler=lambda project, args: render_all(project, validate=not args.no_validate))
 
     return parser
 
@@ -122,7 +134,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
 
     if args.command == "docs":
-        sys.stdout.write(_GUIDE.read_text())
+        try:
+            sys.stdout.write(render_docs(args.topic))
+        except KeyError:
+            print(f"kiln: no docs topic {args.topic!r}; choose one of: {', '.join(topic_names())}", file=sys.stderr)
+            return 2
         return 0
 
     if args.command == "init":

@@ -56,6 +56,7 @@ def test_render_passes_the_kinds_project_files_to_crossplane(tmp_path, monkeypat
     calls = _fake_crossplane(tmp_path / "bin", monkeypatch)
     monkeypatch.setenv("DOCKER_HOST", "unix:///fake.sock")
     monkeypatch.chdir(project / "kcl-scripts")
+    (project / "kcl-scripts" / "observed.yaml").write_text("kind: Bucket\n")
 
     assert main(["render", "IAMRole", "--observed-resources", "observed.yaml"]) == 0
     assert calls.read_text().splitlines() == [

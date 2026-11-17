@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from kiln.generate import build_combined_kcl_source, generate_composition, generate_xrd
+from kiln.generate import build_combined_kcl_source, generate_composition, generate_xrd, source_contributors
 from kiln.normalize import normalize_openapi_schema
 
 
@@ -44,6 +44,30 @@ def _existing_scope(xrd_file: Path) -> str | None:
     return (yaml.safe_load(xrd_file.read_text()) or {}).get("spec", {}).get("scope")
 
 
+# kubectl's client-side apply stores the whole object, as JSON, in one annotation, and Kubernetes
+# caps all of an object's annotations together at this many bytes.
+ANNOTATION_LIMIT = 262144
+SIZE_WARNING_THRESHOLD = 0.8
+
+
+def _size_warning(kind: str, composition: dict) -> str | None:
+    size = len(json.dumps(composition, separators=(",", ":")).encode())
+    if size < ANNOTATION_LIMIT * SIZE_WARNING_THRESHOLD:
+        return None
+    [step] = [s for s in composition["spec"]["pipeline"] if s["step"] == "compose"]
+    contributors = "\n".join(
+        f"  {size_kb:>7.1f} KB  {name}"
+        for name, size_kb in ((n, b / 1024) for n, b in source_contributors(step["input"]["spec"]["source"]))
+    )
+    return (
+        f"kiln: {kind} composition is {size / 1024:.0f} KB, close to or over the {ANNOTATION_LIMIT // 1024} KB "
+        f"Kubernetes annotation limit (kubectl apply would fail with \"metadata.annotations: Too long\").\n"
+        f"Largest parts of the generated KCL source:\n{contributors}\n"
+        f"Unused provider schemas are already pruned; do not trim imported schemas by hand. Reduce what the "
+        f"function references, split the kind, or apply with server-side apply (kubectl apply --server-side)."
+    )
+
+
 _SOURCE_PLACEHOLDER = "__KILN_KCL_SOURCE__"
 COMPOSITION_KCL = "composition.k"
 
@@ -77,6 +101,7 @@ def generate_manifests_for(
     output_dir: Path,
     output_format: str = "yaml",
     scope: str = "Namespaced",
+    provider_config: dict[str, str] | None = None,
 ) -> None:
     compose_source = (kcl_dir / f"{kind.lower()}.k").read_text()
     providers_source = (kcl_dir / "schemas_providers.k").read_text()
@@ -85,7 +110,10 @@ def generate_manifests_for(
     combined_source = build_combined_kcl_source(
         {"schemas_providers": providers_source, "schemas_compositions": compositions_source}, compose_source
     )
-    composition = generate_composition(kind=kind, group=group, combined_source=combined_source)
+    composition = generate_composition(
+        kind=kind, group=group, combined_source=combined_source, provider_config=provider_config
+    )
+    size_warning = _size_warning(kind, composition)
 
     doc = _run_kcl_doc_generate(kcl_dir)
     schema = normalize_openapi_schema(doc, spec_schema)
@@ -103,3 +131,5 @@ def generate_manifests_for(
             f"delete the XRD (and its XRs) on the cluster before applying this one.",
             file=sys.stderr,
         )
+    if size_warning:
+        print(size_warning, file=sys.stderr)

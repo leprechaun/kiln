@@ -17,7 +17,9 @@ def test_installed_kiln_can_create_and_build_an_empty_project(tmp_path):
     assert result.returncode == 0, result.stderr
     docs = subprocess.run([kiln, "docs"], cwd=tmp_path, capture_output=True, text=True)
     assert docs.returncode == 0, docs.stderr
-    assert "Kiln guide" in docs.stdout
+    assert docs.stdout.startswith("# Kiln\n")
+    topic = subprocess.run([kiln, "docs", "troubleshooting"], cwd=tmp_path, capture_output=True, text=True)
+    assert topic.returncode == 0 and topic.stdout.startswith("# Troubleshooting\n"), topic.stderr  # reference files ship too
     assert (tmp_path / "my-platform" / "manifests" / "functions.yaml").is_file()
     assert (tmp_path / "my-platform" / ".gitignore").is_file()
     assert (tmp_path / "my-platform" / ".agents" / "skills" / "kiln" / "SKILL.md").is_file()

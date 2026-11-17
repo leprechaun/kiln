@@ -83,3 +83,38 @@ def test_unknown_scopes_are_rejected_wherever_they_appear(tmp_path):
     (tmp_path / "kiln.toml").write_text('group = "g.io"\n\n[kinds.Site]\nscope = "Mine"\n')
     with pytest.raises(InvalidConfig, match=r"kinds\.Site\.scope must be one of"):
         find_project(tmp_path)
+
+
+def test_provider_config_has_a_project_default_and_per_kind_overrides(tmp_path):
+    (tmp_path / "kiln.toml").write_text(
+        'group = "g.io"\nproviderConfig = { kind = "ClusterProviderConfig", name = "pod-identity" }\n\n'
+        '[kinds.Site]\nproviderConfig = { kind = "ProviderConfig", name = "site" }\n'
+    )
+
+    project = find_project(tmp_path)
+
+    assert project.provider_config_for("Other") == {"kind": "ClusterProviderConfig", "name": "pod-identity"}
+    assert project.provider_config_for("Site") == {"kind": "ProviderConfig", "name": "site"}
+    assert project.provider_config_for("site") == {"kind": "ProviderConfig", "name": "site"}
+
+
+def test_provider_config_is_unset_by_default(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\n')
+
+    assert find_project(tmp_path).provider_config_for("Site") is None
+
+
+def test_a_malformed_provider_config_is_rejected(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\nproviderConfig = { name = "pod-identity" }\n')
+    with pytest.raises(InvalidConfig, match="providerConfig must be a table with exactly a kind and a name"):
+        find_project(tmp_path)
+
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\n\n[kinds.Site]\nproviderConfig = "pod-identity"\n')
+    with pytest.raises(InvalidConfig, match=r"kinds\.Site\.providerConfig must be a table"):
+        find_project(tmp_path)
+
+
+def test_kind_settings_match_kinds_case_insensitively(tmp_path):
+    (tmp_path / "kiln.toml").write_text('group = "g.io"\n\n[kinds.StaticWebsite]\nscope = "Cluster"\n')
+
+    assert find_project(tmp_path).scope_for("staticwebsite") == "Cluster"

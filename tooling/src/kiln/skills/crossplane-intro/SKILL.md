@@ -37,6 +37,14 @@ later run once the value is observed. That gives three stages worth testing: col
 observed, fully observed.
 
 - A new MR is created, the provider reconciles, `status.atProvider` fills in, the next run sees it.
+- `status.atProvider` can lag reality until the provider's next poll (around 10 minutes). Where a
+  dependent resource exists to signal readiness, gate on its `Ready` condition instead: for
+  example ACM `CertificateValidation` Ready, not `Certificate` `atProvider.status == "ISSUED"`:
+
+  ```kcl
+  _conditions = ocds[_validationName]?.Resource?.status?.conditions or []
+  _validationReady = any_true([c.type == "Ready" and c.status == "True" for c in _conditions])
+  ```
 - Spec changes re-run the function and the desired resources are updated.
 - Deleting the XR deletes its MRs (the default deletion policy).
 
@@ -44,8 +52,11 @@ observed, fully observed.
 
 - `spec.forProvider` is what you want; `status.atProvider` is what exists.
 - `crossplane.io/external-name` sets the cloud object's own name.
-- Use the namespaced `.m.` API groups (for example `s3.aws.m.upbound.io`). The compositions in
-  this repo set no `providerConfigRef`; take any field shape from the imported schema, not memory.
+- Use the namespaced `.m.` API groups (for example `s3.aws.m.upbound.io`); take any field shape
+  from the imported schema, not memory.
+- Without `spec.providerConfigRef`, an MR uses `ClusterProviderConfig/default`. If that does not
+  exist, the MR shows **no status and no events**: nothing points at the cause. Kiln can add the
+  right ref for you ([`../kiln/configuration.md`](../kiln/configuration.md)).
 - `function-auto-ready` marks the XR ready when all composed resources are.
 
 ## Debugging a live cluster
@@ -54,6 +65,8 @@ observed, fully observed.
 |---------|-------|
 | Resource not created | Composition and XRD installed (`kubectl get composition,xrd`); provider healthy (`kubectl get providers`) |
 | MR stuck | `kubectl describe <mr>`: read `status.conditions` for the provider's message |
+| MR has no status and no events at all | `kubectl get clusterproviderconfig,providerconfig -A`: does the one it references exist? |
+| An error message you do not recognise | [`../kiln/troubleshooting.md`](../kiln/troubleshooting.md) maps messages to causes |
 | Status not updating | Is the XRD's `status` declared? Without `<Kind>Status` the API server may drop it |
 | Resource appears late | Expected: it depends on an observed value; see Lifecycle |
 

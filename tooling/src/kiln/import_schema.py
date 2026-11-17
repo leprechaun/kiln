@@ -6,6 +6,7 @@ from pathlib import Path
 from kiln.curate import curate_provider_schema, merge_schemas, split_blocks
 from kiln.schema_names import read_crd_identity, schema_prefixes, to_group_prefixed_names
 from kiln.project import Project
+from kiln.validate import scope_warning_for_import
 
 
 def _kcl_import(crd_file: Path, work_dir: Path) -> str:
@@ -25,6 +26,9 @@ def _kcl_import(crd_file: Path, work_dir: Path) -> str:
 
 def import_schema(project: Project, crd_file: Path, print_only: bool = False, schemas_file: Path | None = None) -> int:
     crd = read_crd_identity(crd_file)
+    warning = scope_warning_for_import(crd_file, project)
+    if warning:
+        print(warning, file=sys.stderr)
     with tempfile.TemporaryDirectory() as work_dir:
         generated = _kcl_import(crd_file.resolve(), Path(work_dir))
     # Curate before renaming so a name collision only matters between schemas we actually keep.

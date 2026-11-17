@@ -140,3 +140,30 @@ def test_yaml_composition_embeds_the_kcl_as_a_readable_literal_block(tmp_path, m
     source = composition["spec"]["pipeline"][0]["input"]["spec"]["source"]
     assert source.startswith("composeWidget")
     assert "\\n" not in text  # no escaped newlines: the code is laid out as real lines
+
+
+def test_a_composition_near_the_annotation_limit_warns_and_names_the_largest_schemas(tmp_path, monkeypatch, capsys):
+    kcl_dir = tmp_path / "kcl"
+    kcl_dir.mkdir()
+    _write_kcl_dir(kcl_dir)
+    huge = "schema Huge:\n" + "".join(f"    field{i}?: str\n" for i in range(12000))
+    (kcl_dir / "schemas_providers.k").write_text(huge)
+    (kcl_dir / "widget.k").write_text("composeWidget = lambda oxr, ocds -> [any] {\n  _h: Huge = {}\n  []\n}\n")
+    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
+
+    generate_manifests_for(
+        kind="Widget", spec_schema="WidgetSpec", group="g.io", plural="widgets",
+        kcl_dir=kcl_dir, output_dir=tmp_path / "out",
+    )
+
+    err = capsys.readouterr().err
+    assert "Widget composition is" in err
+    assert "262144" not in err and "256 KB" in err
+    assert "schema Huge" in err
+    assert "do not trim imported schemas by hand" in err
+
+
+def test_a_small_composition_does_not_warn_about_size(tmp_path, monkeypatch, capsys):
+    _xrd_scope(tmp_path, monkeypatch)
+
+    assert "annotation limit" not in capsys.readouterr().err

@@ -16,6 +16,7 @@ def generate_all(project: Project) -> int:
                 output_dir=project.compositions_dir / kind.lower(),
                 output_format=project.format,
                 scope=project.scope_for(kind),
+                provider_config=project.provider_config_for(kind),
             )
             print(f"✓ {kind}")
         except Exception as e:

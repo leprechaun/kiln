@@ -76,10 +76,40 @@ def enforce_naming_convention(kind: str, compose_source: str) -> None:
         )
 
 
-def generate_composition(kind: str, group: str, combined_source: str) -> dict:
+def _provider_config_wrapper(group: str, provider_config: dict[str, str]) -> str:
+    """KCL that gives a default providerConfigRef to every composed managed resource without one.
+
+    A managed resource is anything with `spec.forProvider` outside the project's own API group, so
+    the XR (returned to report status), child XRs and plain Kubernetes objects are left alone.
+    A missing dict key is Undefined rather than None in KCL, so the tests use truthiness.
+    """
+    return (
+        f'_kilnProviderConfigRef = {{kind = "{provider_config["kind"]}", name = "{provider_config["name"]}"}}\n'
+        "_kilnIsManaged = lambda r: any -> bool {\n"
+        f'    "forProvider" in (r?.spec or {{}}) and not (r?.apiVersion or "").startswith("{group}/")\n'
+        "}\n"
+        "_kilnWithProviderConfig = lambda r: any -> any {\n"
+        "    r | {spec.providerConfigRef = _kilnProviderConfigRef} "
+        "if _kilnIsManaged(r) and not r?.spec?.providerConfigRef else r\n"
+        "}\n"
+    )
+
+
+def generate_composition(
+    kind: str, group: str, combined_source: str, provider_config: dict[str, str] | None = None
+) -> dict:
     enforce_naming_convention(kind, combined_source)
     compose_fn = f"compose{kind}"
-    source = combined_source + f'\nitems = {compose_fn}(option("params").oxr, option("params").ocds)\n'
+    call = f'{compose_fn}(option("params").oxr, option("params").ocds)'
+    if provider_config:
+        source = (
+            combined_source
+            + "\n"
+            + _provider_config_wrapper(group, provider_config)
+            + f"items = [_kilnWithProviderConfig(r) for r in {call}]\n"
+        )
+    else:
+        source = combined_source + f"\nitems = {call}\n"
 
     return {
         "apiVersion": "apiextensions.crossplane.io/v1",
@@ -133,3 +163,12 @@ def generate_xrd(
             ],
         },
     }
+
+
+def source_contributors(source: str, top: int = 5) -> list[tuple[str, int]]:
+    """The largest parts of a generated KCL source, by size in bytes: each schema, and everything else."""
+    _, blocks = split_blocks(source)
+    parts = [(f"schema {name}", len(_split_tail(block)[0].encode())) for name, block in blocks.items()]
+    schemas_total = sum(size for _, size in parts)
+    parts.append(("compose function and other code", len(source.encode()) - schemas_total))
+    return sorted(parts, key=lambda p: p[1], reverse=True)[:top]

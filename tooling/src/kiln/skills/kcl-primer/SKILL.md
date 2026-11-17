@@ -9,7 +9,7 @@ description: >
 # KCL primer
 
 KCL is a configuration language (closer to HCL than Python). Full reference:
-https://www.kcl-lang.io/docs/user_docs/guides/. For Kiln workflow and rules see `kiln docs`.
+https://www.kcl-lang.io/docs/user_docs/guides/. For Kiln workflow and rules see the `kiln` skill.
 
 ## Syntax that trips people up
 
@@ -32,6 +32,22 @@ _bucket = {
 - No leading-operator line continuation (a line starting with `+` is a new statement).
 - `type X = A | B` must be on one line.
 - Interpolation: `"arn:aws:s3:::${bucketName}/*"`. Concatenation with `+` also works.
+- **Inner `spec` shadows yours.** Inside a dict that defines its own `spec.<x>` key, `spec.<y>`
+  means that dict's `spec`, not the `spec` local holding the XR spec:
+
+  ```kcl
+  _bucket = {
+      spec.forProvider.region = spec.region   # wrong: reads _bucket's own spec
+  }
+  _region = spec.region                       # right: bind XR values to locals first
+  _bucket = {
+      spec.forProvider.region = _region
+  }
+  ```
+
+  The symptom is a value that goes missing, or `expected str, got {str:str}`.
+- **`in` on a schema instance tests declaration, not presence.** `"field" in obj` is True for every
+  attribute the schema declares, even when unset. Test the value: `if obj.field` / `not obj.field`.
 
 ## The compose function
 
@@ -87,7 +103,7 @@ test_builds_one_resource = lambda {
 ```
 
 Top-level names in test files share one package: prefix helpers with the kind (`_thingBaseOxr`).
-The required test list is in `kiln docs` under "Tests".
+The required test list is in [`../kiln/testing.md`](../kiln/testing.md).
 
 ## Common errors
 
@@ -99,6 +115,7 @@ The required test list is in `kiln docs` under "Tests".
 | Type mismatch on `forProvider` | Field name or type differs from the imported schema; read `schemas_providers.k` |
 | Passes `kcl test`, rejected by render | Spec schema is closed; add `[str]: any` |
 | Unknown attribute on `StatusAtProvider` | Those schemas are closed; check the real field names |
+| `expected str, got {str:str}` inside a resource dict | `spec.<y>` resolves to the dict's own `spec`; bind the XR value to a local first |
 
 ## Examples
 

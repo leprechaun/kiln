@@ -1,4 +1,5 @@
 import os
+import yaml
 import shutil
 from pathlib import Path
 
@@ -217,3 +218,20 @@ def test_importing_drops_a_stale_status_side_schema_the_resource_no_longer_gener
     assert main(["import", str(FUNCTIONURL_CRD)]) == 0
 
     assert "AtProviderStale" not in schemas.read_text()
+
+
+def test_importing_a_cluster_scoped_crd_into_a_namespaced_project_warns(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    _fake_kcl(tmp_path / "bin", monkeypatch, FIXTURES / "role_kcl_import.k")
+    legacy = tmp_path / "role_legacy.yaml"
+    crd = yaml.safe_load(ROLE_CRD.read_text())
+    crd["spec"]["group"] = "iam.aws.upbound.io"
+    crd["spec"]["scope"] = "Cluster"
+    legacy.write_text(yaml.safe_dump(crd))
+    monkeypatch.chdir(project)
+
+    assert main(["import", str(legacy)]) == 0
+    assert "iam.aws.upbound.io Role is cluster-scoped" in capsys.readouterr().err
+
+    assert main(["import", str(ROLE_CRD)]) == 0
+    assert "cluster-scoped" not in capsys.readouterr().err
