@@ -41,3 +41,20 @@ def test_init_tells_agents_to_read_the_guide_first(tmp_path):
     main(["init", str(tmp_path / "p")])
 
     assert "kiln docs" in (tmp_path / "p" / "AGENTS.md").read_text()
+
+
+def test_init_agents_file_makes_tests_a_requirement(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    agents = (tmp_path / "p" / "AGENTS.md").read_text()
+    for needed in ("<kind>_test.k", "kcl test .", "kiln render-all"):
+        assert needed in agents
+
+
+def test_init_agents_file_says_how_to_install_and_run_kiln(tmp_path):
+    main(["init", str(tmp_path / "p")])
+
+    agents = (tmp_path / "p" / "AGENTS.md").read_text()
+    assert "not published on PyPI" in agents
+    assert 'uvx --from "git+https://github.com/leprechaun/kiln#subdirectory=tooling" kiln' in agents
+    assert "uv tool install" in agents

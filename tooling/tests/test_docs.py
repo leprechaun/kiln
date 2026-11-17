@@ -59,3 +59,28 @@ def test_the_guide_defines_what_verified_means_as_one_ordered_sequence(tmp_path,
 
 def test_the_guide_covers_the_users_project_not_kilns_own_tests(tmp_path, monkeypatch, capsys):
     assert "pytest" not in _guide(capsys, monkeypatch, tmp_path).lower()
+
+
+def test_the_guide_opens_with_ground_rules_that_make_tests_a_deliverable(tmp_path, monkeypatch, capsys):
+    guide = _guide(capsys, monkeypatch, tmp_path)
+
+    assert "## Ground rules" in guide
+    rules = guide.split("## Ground rules", 1)[1].split("\n## ", 1)[0]
+    assert "_test.k" in rules
+    assert "test first" in rules.lower()
+    assert "defer" in rules.lower()  # deferring render/YAML work never defers tests
+
+
+def test_the_guide_lists_the_tests_every_kind_needs(tmp_path, monkeypatch, capsys):
+    guide = _guide(capsys, monkeypatch, tmp_path)
+
+    tests = guide.split("### Tests", 1)[1].split("\n## ", 1)[0]
+    for required in ("cold start", "optional", "conditional", "extra field", "status"):
+        assert required in tests.lower()
+
+
+def test_the_guide_says_a_project_without_tests_is_not_done(tmp_path, monkeypatch, capsys):
+    guide = _guide(capsys, monkeypatch, tmp_path)
+
+    verify = guide.split("## Verify your work", 1)[1]
+    assert "no tests" in verify.lower()

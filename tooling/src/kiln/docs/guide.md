@@ -10,6 +10,21 @@ Terms: an **XR** is the composite resource a consumer creates (it has `spec` and
 is what you want, its `status.atProvider` is what exists). `oxr` is the observed XR
 passed into your function; `ocds` is a map of the composed resources observed so far.
 
+## Ground rules
+
+1. **Tests are part of the deliverable.** For every kind you create, write
+   `kcl-scripts/<kind>_test.k` and make `kcl test .` pass. A kind without tests is not
+   done, even if it generates and renders cleanly.
+2. **Write the test first.** For each kind, in this order: spec (and status) schema, a
+   failing test, the compose function, `kcl test .` green, and only then
+   `kiln generate` and `kiln render`.
+3. **Deferring work never defers tests.** If you are told to concentrate on the KCL, or to
+   hold off on rendering or the YAML, that postpones `kiln generate` and `kiln render`
+   only. Schemas, the compose function and its tests are all KCL, and all of them are in
+   scope.
+4. **Done means verified.** You are done when the three commands under "Verify your
+   work" pass. If you could not run one, say so; do not call the work done.
+
 ## The workflow
 
 | # | Phase | Command | Who |
@@ -17,7 +32,7 @@ passed into your function; `ocds` is a map of the composed resources observed so
 | 1 | Pull provider CRDs | `kiln pull-crds` | tool |
 | 2 | Import the provider schemas you use | `kiln import <crd file>` | tool |
 | 3 | Design the XR spec (and status) schema | edit `kcl-scripts/schemas_compositions.k` | you |
-| 4 | Write and test the compose function | edit `kcl-scripts/<kind>.k`, run `kcl test .` | you |
+| 4 | Write the tests, then the compose function | edit `kcl-scripts/<kind>_test.k`, then `kcl-scripts/<kind>.k`; run `kcl test .` | you |
 | 5 | Generate manifests and render | `kiln generate-all`, `kiln render-all` | tool |
 
 You need `kcl`, the `crossplane` CLI, and Docker (only rendering uses Docker).
@@ -151,7 +166,7 @@ Keep it closed: that is what makes a misspelt status field a compile error. When
 it exists, Kiln puts it in the XRD under `status`. Without one the XRD declares no
 status, and a real API server may drop status fields you set.
 
-## Phase 4: write and test the compose function
+## Phase 4: write the tests, then the compose function
 
 Create `kcl-scripts/<kind lowercased>.k` (for `ObjectStore`, `objectstore.k`)
 holding one function named `compose<Kind>` with exactly this signature:
@@ -258,7 +273,8 @@ _xr = {
 
 ### Tests
 
-Put tests in `kcl-scripts/<kind>_test.k` and run them with:
+Tests are a required part of every kind, written before the function they test. They
+live in `kcl-scripts/<kind>_test.k` and run with:
 
 ```bash
 cd kcl-scripts
@@ -279,11 +295,27 @@ test_builds_the_bucket_from_spec = lambda {
 }
 ```
 
-Test the cold start (`ocds = {}`), a partially observed state, and a fully
-observed one, since gated resources behave differently in each. Write the test
-first, watch it fail, then write the minimal code. `kcl test` is necessary but not
-sufficient: a green suite has hidden real bugs before. The render step below catches
-what it cannot.
+A kind is not tested until its `<kind>_test.k` has a `test_*` function for each of these:
+
+1. **Every resource it can emit:** `apiVersion`, `kind`, the composition-resource-name
+   annotation, and the `forProvider` fields that come from the spec (and the external
+   name, if you set one).
+2. **Optional spec fields:** passed through when set, and absent when not set.
+3. **Defaults:** a spec default takes effect when the consumer leaves the field out.
+4. **Every conditional resource** (anything built `if ... else None`): absent when its
+   condition is false or its input is not observed yet, present when it is.
+5. **Observed-state stages:** cold start (`ocds = {}`), a resource observed but with an
+   empty `atProvider = {}`, partly observed, and fully observed. Assert exactly what is
+   emitted at each stage.
+6. **An extra field in the spec:** a test whose `spec` also carries an unexpected field
+   (such as `crossplane = {}`) and still composes. This mirrors the `[str]: any` rule.
+7. **Status:** the returned XR carries the right status once the value is observed, and is
+   not emitted before.
+
+Write one test, watch it fail, write the minimal code to pass it, repeat; do not write
+the whole function first and the tests afterwards. `kcl test` is necessary but not
+sufficient: a green suite has hidden real bugs before. The render step below catches what
+it cannot.
 
 ## Phase 5: generate and render
 
@@ -350,6 +382,9 @@ kiln generate-all                # prints a check mark for every kind
 kiln render-all                  # prints a check mark for every kind, exits 0
 ```
 
+- `kcl test .` can look green when there are no tests. A project with no tests is not
+  done: check that every kind has a `<kind>_test.k` covering the list under "Tests", and
+  that the `kcl test .` output lists tests for each kind.
 - Run `kiln generate-all` every time, before rendering. Never trust whatever
   manifests are already on disk: `render` uses the generated files, so stale ones
   give you a render of old code. If the project is in git, `git diff manifests/`
@@ -366,7 +401,7 @@ kiln render-all                  # prints a check mark for every kind, exits 0
 
 1. `kiln pull-crds`, then `kiln import` each provider resource you use.
 2. Add `<Kind>Spec` (ending in `[str]: any`) and, if you report status, `<Kind>Status`.
-3. Write `compose<Kind>` in `kcl-scripts/<kind>.k` and tests in `<kind>_test.k`; `kcl test .` passes.
+3. Write failing tests in `kcl-scripts/<kind>_test.k` (the list under "Tests"), then `compose<Kind>` in `kcl-scripts/<kind>.k`, until `kcl test .` passes.
 4. `kiln generate <Kind>`, add `render-fixtures/<kind>/xr.yaml` (and observed fixtures), `kiln render <Kind>` succeeds.
 5. Run the full verification above.
 6. Commit the generated manifests; deploy `manifests/crossplane-compositions/<kind>/`.
