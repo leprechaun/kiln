@@ -23,6 +23,50 @@ passed into your function; `ocds` is a map of the composed resources observed so
 You need `kcl`, the `crossplane` CLI, and Docker (only rendering uses Docker).
 Phases 1 and 2 work with `kcl` 0.12 or 0.13.
 
+Kiln is not published on PyPI; it is installed from GitHub. Every command in this
+guide is written as plain `kiln …`. If `kiln` is not on your `PATH` and you run it
+through `uvx`, put this prefix in front of each one (the package is in the
+`tooling/` subdirectory of the repo):
+
+```bash
+uvx --from "git+https://github.com/leprechaun/kiln#subdirectory=tooling" kiln <command>
+```
+
+Or install it once with
+`uv tool install "git+https://github.com/leprechaun/kiln#subdirectory=tooling"`.
+
+## The intended workflow
+
+Work on one kind at a time, from the cheapest check to the most expensive. Each
+step has a check, and you do not move on until it passes.
+
+```
+ once per project       kiln pull-crds
+ per provider resource  kiln import <crd>               -> schemas compile (kcl test .)
+ per kind
+   design               <Kind>Spec (+ <Kind>Status)     -> kcl test .
+   inner loop           write a failing test            -> kcl test .   (fast, no Docker)
+   (repeat)             write the minimal code          -> kcl test .
+   outer loop           kiln generate <Kind>            -> kiln render <Kind>   (Docker)
+   (repeat)             add observed fixtures           -> kiln render <Kind> --observed-resources ...
+ before you finish      the full verification below
+```
+
+Where each kind of check fits, and what it can and cannot tell you:
+
+| Check | Cost | Catches | Misses |
+|-------|------|---------|--------|
+| `kcl test .` | seconds, no Docker | logic errors, typos in schema fields, wrong or missing `forProvider` fields | anything about the generated Composition or XRD, a closed spec schema, how the real function runtime flattens your files |
+| `kiln render <Kind>` | slower, needs Docker | the generated source failing to compile in the real runtime, a spec schema that rejects real XRs, wrong output shape | whether the cloud provider accepts the values; nothing talks to a cluster or AWS |
+| `kiln render <Kind> --observed-resources ...` | same | the stages that depend on observed state: whether the next resource appears, and whether status is reported | observed shapes you got wrong in the fixture (a fixture encodes your assumptions) |
+
+Neither check substitutes for the other. A green `kcl test .` has hidden real bugs
+before; only a render found them. Check observed field names against the imported
+`StatusAtProvider` schema, not against memory.
+
+Write tests and render fixtures for the same stages your function has: cold start
+(nothing observed yet), partly observed, and fully observed.
+
 ## Project layout
 
 Every command finds its project by searching upward from the current directory
@@ -295,10 +339,34 @@ Rendering exercises the generated source inside the real function runtime, so it
 catches mistakes `kcl test` cannot: flattening problems, a closed spec schema,
 and wrong observed shapes.
 
+## Verify your work
+
+You are done only when all three of these pass, run in this order from the project
+(or `kcl-scripts/` for the first):
+
+```bash
+cd kcl-scripts && kcl test .     # every test passes
+kiln generate-all                # prints a check mark for every kind
+kiln render-all                  # prints a check mark for every kind, exits 0
+```
+
+- Run `kiln generate-all` every time, before rendering. Never trust whatever
+  manifests are already on disk: `render` uses the generated files, so stale ones
+  give you a render of old code. If the project is in git, `git diff manifests/`
+  after `kiln generate-all` shows what regenerating changed.
+- Every kind needs `render-fixtures/<kind>/xr.yaml`. `kiln render-all` fails for a kind
+  without one.
+- A failure prints a cross and the error. Fix the cause and run the sequence again from
+  the top. Do not edit the generated files in `manifests/` by hand.
+- Rendering needs Docker and the `crossplane` CLI. If either is missing, `kiln render`
+  fails. That is not a pass. Say that the render step could not be run, and do not
+  report the work as verified.
+
 ## Checklist for a new kind
 
 1. `kiln pull-crds`, then `kiln import` each provider resource you use.
 2. Add `<Kind>Spec` (ending in `[str]: any`) and, if you report status, `<Kind>Status`.
 3. Write `compose<Kind>` in `kcl-scripts/<kind>.k` and tests in `<kind>_test.k`; `kcl test .` passes.
 4. `kiln generate <Kind>`, add `render-fixtures/<kind>/xr.yaml` (and observed fixtures), `kiln render <Kind>` succeeds.
-5. Commit the generated manifests; deploy `manifests/crossplane-compositions/<kind>/`.
+5. Run the full verification above.
+6. Commit the generated manifests; deploy `manifests/crossplane-compositions/<kind>/`.
