@@ -65,10 +65,17 @@ Kubernetes caps an object's annotations at 262144 bytes (256 KB), and `kubectl a
 `metadata.annotations: Too long: may not be more than 262144 bytes`.
 
 Generation already keeps the Composition small: it includes only the schemas your function
-reaches (directly or through other schemas) and drops docstrings, so a composition using several
-providers is typically tens of KB. The schema files keep everything, so import freely; **size is
-never a reason to trim `schemas_providers.k`**, and trimming removes the type checking that
-catches wrong shapes.
+reaches (directly or through other schemas) and drops docstrings and blank lines, so a
+composition using several providers is typically tens of KB, far below the limit. With
+server-side apply the limit is the object size (about 1.5 MB). The schema files keep everything,
+so import freely.
+
+**Use the imported schemas, never hand-written narrow copies of them.** Size is not a reason to
+trim `schemas_providers.k` or to write your own smaller `forProvider` schema: tens of KB is
+fine, and a hand-written copy does not follow `kiln import` when the provider changes, so it
+drifts. If you already have one, `kiln render` checks every rendered resource against the
+current CRDs, which catches fields the copy gets wrong in what you emit, but not the fields it
+leaves out.
 
 `kiln generate` warns when a Composition passes 80% of the limit and lists the largest parts of
 its source. If it does: reduce what the function references, split the kind, or apply with

@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -40,11 +41,29 @@ def _evaluate_jsonnet(composition: Path, into: Path) -> tuple[Path | None, subpr
     return evaluated, None
 
 
+def _fixtures(project: Project, kind: str, prefix: str) -> list[Path]:
+    return sorted(
+        p for p in (project.render_fixtures_dir / kind.lower()).glob(f"{prefix}-*") if p.suffix in (".yaml", ".yml")
+    )
+
+
 def observed_fixtures(project: Project, kind: str) -> list[Path]:
     """The observed-state fixtures `render-all` renders, one render each: render-fixtures/<kind>/observed-*.yaml."""
-    return sorted(
-        p for p in (project.render_fixtures_dir / kind.lower()).glob("observed-*") if p.suffix in (".yaml", ".yml")
-    )
+    return _fixtures(project, kind, "observed")
+
+
+def invalid_fixtures(project: Project, kind: str) -> list[Path]:
+    """XRs that must fail to render: render-fixtures/<kind>/invalid-*.yaml."""
+    return _fixtures(project, kind, "invalid")
+
+
+_EXPECT_ERROR = re.compile(r"^#\s*expect-error:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def expected_error(fixture: Path) -> str | None:
+    """The text of the fixture's `# expect-error: <text>` comment, if it has one."""
+    match = _EXPECT_ERROR.search(fixture.read_text())
+    return match.group(1) if match else None
 
 
 def _observed_file(observed: Path, into: Path) -> tuple[Path | None, subprocess.CompletedProcess | None]:
@@ -95,7 +114,12 @@ def render(
     observed_resources: Path | None = None,
     validate: bool = True,
     env: dict | None = None,
+    xr: Path | None = None,
 ) -> subprocess.CompletedProcess:
+    """Render `kind` against `xr` (default render-fixtures/<kind>/xr.yaml)."""
+    if xr is not None and not Path(xr).is_file():
+        return _failure(f"kiln: {xr}: no such file")
+    xr = Path(xr) if xr is not None else project.render_fixtures_dir / kind.lower() / "xr.yaml"
     env = {**os.environ, **(env or {})}
     env.setdefault("DOCKER_HOST", docker_host())
     kind_dir = project.compositions_dir / kind.lower()
@@ -120,7 +144,7 @@ def render(
                 "crossplane",
                 "composition",
                 "render",
-                str(project.render_fixtures_dir / kind.lower() / "xr.yaml"),
+                str(xr),
                 str(composition),
                 str(project.functions_file),
                 *extra_args,

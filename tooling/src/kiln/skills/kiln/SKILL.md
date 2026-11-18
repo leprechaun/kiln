@@ -92,6 +92,7 @@ What each check can and cannot tell you:
 | `kcl test .` | seconds, no Docker | logic errors, typos in schema fields, wrong or missing `forProvider` fields | anything about the generated Composition or XRD, a closed spec schema, how the real function runtime flattens your files |
 | `kiln render <Kind>` | slower, needs Docker | the generated source failing to compile in the real runtime, a spec schema that rejects real XRs, and every composed resource the cluster would reject (checked against the CRDs in `crds/`) | whether the cloud provider accepts the values; nothing talks to a cluster or AWS |
 | `kiln render-all` with `observed-<stage>.yaml` fixtures | same | the stages that depend on observed state: whether the next resource appears, its shape, and whether status is reported | observed shapes you got wrong in the fixture (a fixture encodes your assumptions) |
+| `kiln render-all` with `invalid-<case>.yaml` fixtures | same | that an XR breaking a spec rule (a `check:` block) is rejected with the right error, which `kcl test` cannot assert | rules you never wrote |
 
 Neither check substitutes for the other: a green `kcl test .` has hidden real bugs before, and
 only a render found them. Write tests and render fixtures for the same stages your function has:
@@ -123,7 +124,7 @@ Every command finds its project by searching upward from the current directory f
 | `crds/` | downloaded CRDs (generated, git-ignored) |
 | `kcl-scripts/` | your KCL: schemas, compose functions, tests |
 | `manifests/crossplane-compositions/<kind>/` | generated Composition and `xrd.yaml`; deploy these, put nothing else here |
-| `render-fixtures/<kind>/` | `xr.yaml`, the sample XR, and `observed-<stage>.yaml`, mocked observed resources for each stage |
+| `render-fixtures/<kind>/` | `xr.yaml`, the sample XR; `observed-<stage>.yaml`, mocked observed resources for each stage; `invalid-<case>.yaml`, XRs that must be rejected |
 
 Arguments you pass to a command (like a CRD path) are relative to where you run it, not to the
 project root. `kcl-scripts/` is **one compiled package**: `kcl test .` compiles every file in it
@@ -148,7 +149,8 @@ kiln render-all                  # prints a check mark for every kind and stage,
   `git diff manifests/` after `kiln generate-all` shows what regenerating changed.
 - Every kind needs `render-fixtures/<kind>/xr.yaml`; `kiln render-all` fails for a kind
   without one. A kind whose function reacts to observed state also needs
-  `observed-<stage>.yaml` fixtures ([`rendering.md`](rendering.md)).
+  `observed-<stage>.yaml` fixtures, and a kind with spec rules needs an `invalid-<case>.yaml`
+  per rule ([`rendering.md`](rendering.md)).
 - A failure prints a cross and the error; look it up in [`troubleshooting.md`](troubleshooting.md).
   Fix the cause upstream and run the sequence again from the top.
 - Rendering needs Docker and the `crossplane` CLI. If either is missing, `kiln render`
@@ -161,8 +163,8 @@ kiln render-all                  # prints a check mark for every kind and stage,
 2. Add `<Kind>Spec` (ending in `[str]: any`) and, if you report status, `<Kind>Status`.
 3. Write failing tests in `kcl-scripts/<kind>_test.k`, then `compose<Kind>` in
    `kcl-scripts/<kind>.k`, until `kcl test .` passes.
-4. `kiln generate <Kind>`, add `render-fixtures/<kind>/xr.yaml` and an `observed-<stage>.yaml`
-   per observed stage, and `kiln render <Kind>` succeeds.
+4. `kiln generate <Kind>`, add `render-fixtures/<kind>/xr.yaml`, an `observed-<stage>.yaml`
+   per observed stage and an `invalid-<case>.yaml` per spec rule, and `kiln render <Kind>` succeeds.
 5. Set `providerConfig` in `kiln.toml` if the cluster has no `ClusterProviderConfig/default`.
 6. Run "Verify your work" above.
 7. Commit the generated manifests; deploy `manifests/crossplane-compositions/<kind>/`.

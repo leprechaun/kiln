@@ -209,6 +209,18 @@ def test_the_generated_source_has_no_runs_of_blank_lines():
     assert "\n\n\n" not in combined
 
 
+def test_schema_bodies_have_no_blank_lines_between_attributes():
+    schemas = 'schema A:\n    r"""\n    Doc.\n    """\n\n    x: str\n\n    y?: int\n\n    check:\n        y > 0 if y\n'
+
+    assert "schema A:\n    x: str\n    y?: int\n    check:\n        y > 0 if y\n" in _combine(schemas)
+
+
+def test_a_schema_holding_a_multi_line_string_keeps_its_blank_lines():
+    schemas = 'schema A:\n    x: str = """\n\nkept\n"""\n'
+
+    assert '"""\n\nkept' in _combine(schemas)
+
+
 def test_generate_xrd_defaults_to_namespaced_and_accepts_a_cluster_scope():
     args = dict(kind="Widget", group="g.io", plural="widgets", spec_schema={"type": "object"})
 

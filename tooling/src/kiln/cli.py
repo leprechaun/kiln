@@ -41,7 +41,9 @@ def _generate(project, args) -> int:
 
 
 def _render(project, args) -> int:
-    result = render(project, args.kind, observed_resources=args.observed_resources, validate=not args.no_validate)
+    result = render(
+        project, args.kind, observed_resources=args.observed_resources, validate=not args.no_validate, xr=args.xr
+    )
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode
@@ -117,12 +119,15 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="Mocked observed resources: a multi-document YAML file, or a directory whose .yaml/.yml files are all loaded",
     )
+    render_cmd.add_argument(
+        "--xr", type=Path, help="The XR to render (default render-fixtures/<kind>/xr.yaml), e.g. an invalid-*.yaml fixture"
+    )
     render_cmd.add_argument("--no-validate", action="store_true", help=_NO_VALIDATE_HELP)
     render_cmd.set_defaults(handler=_render)
 
     render_all_cmd = commands.add_parser(
         "render-all",
-        help="Render every kind against its sample XR, cold and then with each render-fixtures/<kind>/observed-*.yaml",
+        help="Render every kind against its sample XR, cold and with each observed-*.yaml; check each invalid-*.yaml fails",
     )
     render_all_cmd.add_argument("--no-validate", action="store_true", help=_NO_VALIDATE_HELP)
     render_all_cmd.set_defaults(handler=lambda project, args: render_all(project, validate=not args.no_validate))

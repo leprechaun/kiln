@@ -23,6 +23,26 @@ as `spec.crossplane`) that your schema does not declare, and a closed schema rej
 `kcl test` fixtures never include those fields, so only a real render shows the failure.
 Generation strips this from the XRD, so it does not widen your public API.
 
+### Spec rules
+
+A rule that spans fields (aliases need a certificate, `min <= max`) goes in a `check:` block, so an
+XR that breaks it fails with your message instead of producing resources the cloud rejects:
+
+```kcl
+schema SiteSpec:
+    aliases?: [str]
+    certificateArn?: str
+    [str]: any
+
+    check:
+        not aliases or certificateArn, "aliases need certificateArn"
+```
+
+`kcl test` cannot assert that something fails, so cover each rule with an `invalid-<case>.yaml`
+render fixture ([`rendering.md`](rendering.md)) and keep the passing side in `kcl test`.
+
+### Status
+
 To report status back to consumers, add an optional `<Kind>Status` schema
 (`schema ObjectStoreStatus:` with optional fields such as `bucketArn?: str`). Keep it closed:
 that is what makes a misspelt status field a compile error. When it exists, Kiln puts it in the

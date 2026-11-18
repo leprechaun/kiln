@@ -40,6 +40,9 @@ A kind is not tested until its `<kind>_test.k` has a `test_*` function for each 
    (such as `crossplane = {}`) and still composes. This mirrors the `[str]: any` rule.
 7. **Status:** the returned XR carries the right status once the value is observed, and is
    not emitted before.
+8. **Spec rules:** for each `check:` rule, a test where a valid spec composes. The rejected
+   side cannot be asserted in `kcl test`; it is an `invalid-<case>.yaml` render fixture
+   ([`rendering.md`](rendering.md)).
 
 ## The loop
 

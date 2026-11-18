@@ -182,8 +182,27 @@ commands work from its root. To add a new kind, follow
 the exact commands to run.
 
 `kiln docs` prints a standalone guide to the whole workflow, written so an LLM
-agent (or a person) can build a kind from nothing. `kiln init` also drops an
-`AGENTS.md` into the new project that tells agents to read it first.
+agent (or a person) can build a kind from nothing; it ends with a list of topics
+(`kiln docs rendering`, `kiln docs troubleshooting`, ...), and `kiln docs all` prints
+everything. The same text ships as the `kiln`, `kcl-primer` and `crossplane-intro`
+skills (`kiln install-skills`). `kiln init` also drops an `AGENTS.md` into the new
+project that tells agents to read it first.
+
+### Configuration
+
+`kiln.toml` holds the project settings (`kiln init` writes them; `kiln docs configuration` explains each one):
+
+```toml
+group  = "platform.example.com"   # API group for your XRs
+format = "yaml"                   # or "jsonnet": composition.jsonnet + composition.k, for ArgoCD
+scope  = "Namespaced"             # XR scope; "Cluster" to compose cluster-scoped resources
+providerConfig = { kind = "ClusterProviderConfig", name = "default" }  # given to MRs that set none
+
+[kinds.MyKind]
+scope = "Cluster"                 # per-kind override (scope and providerConfig)
+```
+
+An XRD's scope is immutable on the cluster, so pick it before you first apply.
 
 ## Status
 

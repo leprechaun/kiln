@@ -24,6 +24,15 @@ def _split_tail(block: str) -> tuple[str, str]:
     return "".join(lines[:end]), "".join(lines[end:])
 
 
+def _compact(schema: str) -> str:
+    """The schema without the blank lines between its attributes (kcl import separates each documented
+    attribute with one; once docstrings are gone they are about half of the generated source).
+    A schema holding a multi-line string is left alone, since its blank lines may be part of the string."""
+    if '"""' in schema or "'''" in schema:
+        return schema
+    return "".join(line for line in schema.splitlines(keepends=True) if line.strip())
+
+
 def _references(text: str, names: set[str]) -> set[str]:
     return {name for name in names if re.search(rf"\b{re.escape(name)}\b", text)}
 
@@ -50,7 +59,7 @@ def _shake_schemas(modules: list[str], compose_source: str) -> list[str]:
             frontier.add(reached)
 
     return [
-        _BLANK_RUNS.sub("\n\n", preamble + "".join((text if name in keep else "") + tail for name, text, tail in blocks))
+        _BLANK_RUNS.sub("\n\n", preamble + "".join((_compact(text) if name in keep else "") + tail for name, text, tail in blocks))
         for preamble, blocks in parsed
     ]
 

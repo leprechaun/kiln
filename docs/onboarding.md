@@ -1,6 +1,7 @@
 # Onboarding: using Kiln
 
-> A standalone version of this guide ships with kiln: run `kiln docs`. It has no
+> A standalone version of this guide ships with kiln: run `kiln docs` (and the topics it
+> lists), or read the bundled skills under `.agents/skills/`. It has no
 > references to this repo's example kinds, so it works in a project created by
 > `kiln init`. The two overlap, so update both when the workflow changes.
 

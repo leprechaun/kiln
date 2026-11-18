@@ -84,7 +84,7 @@ render-fixtures/objectstore/
 ```
 
 `kiln render-all` renders each kind cold (only `xr.yaml`), then once per `observed-*.yaml` file in
-name order, checks every render, and prints a line for each. Without these files it never
+name order, then each `invalid-*.yaml` (below); it checks every render and prints a line for each. Without these files it never
 exercises the resources gated on observed state. To render one stage by hand:
 
 ```bash
@@ -94,3 +94,28 @@ kiln render ObjectStore --observed-resources path/to/dir/   # every .yaml/.yml i
 
 `--observed-resources` takes a multi-document YAML file, or a directory whose `.yaml`/`.yml` files
 are all loaded together. A path that does not exist is an error.
+
+## Invalid XRs
+
+For each spec rule (a `check:` block, see [`composing.md`](composing.md)), add an XR that breaks
+it as `render-fixtures/<kind>/invalid-<case>.yaml`, starting with a comment naming the error it
+must fail with:
+
+```yaml
+# expect-error: aliases need certificateArn
+apiVersion: platform.example.com/v1alpha1
+kind: Site
+metadata:
+  name: alias-without-certificate
+spec:
+  aliases: [www.example.com]
+```
+
+`kiln render-all` renders each one and passes it only if the render fails **and** the output
+contains the `expect-error` text, so a fixture that fails for another reason (a typo in the
+`apiVersion`, Docker not running) does not count as a pass. A fixture without the comment fails.
+To render one by hand:
+
+```bash
+kiln render Site --xr render-fixtures/site/invalid-alias-without-certificate.yaml
+```

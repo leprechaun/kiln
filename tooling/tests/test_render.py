@@ -19,9 +19,10 @@ def _project(path, scope="Namespaced"):
     return path
 
 
-def _fake_crossplane(tmp_path, monkeypatch, resources):
+def _fake_crossplane(tmp_path, monkeypatch, resources, rejects=None):
     """A `crossplane` that prints the XR and `resources` as render output, and logs each run's argv
-    and the observed resources it was given."""
+    and the observed resources it was given. With `rejects`, an XR file whose name contains "reject"
+    fails the render with that message, as a KCL `check:` would."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     output = bin_dir / "output.yaml"
@@ -31,7 +32,8 @@ def _fake_crossplane(tmp_path, monkeypatch, resources):
     script.write_text(
         "#!/bin/sh\n"
         f'echo "RUN $*" >> {log}\n'
-        'while [ $# -gt 0 ]; do\n'
+        + (f'case "$*" in *reject*) echo "crossplane: error: {rejects}" >&2; exit 1;; esac\n' if rejects else "")
+        + 'while [ $# -gt 0 ]; do\n'
         f'  if [ "$1" = "--observed-resources" ]; then cat "$2" >> {log}; echo >> {log}; fi\n'
         "  shift\n"
         "done\n"
@@ -152,3 +154,68 @@ def test_render_all_fails_when_an_observed_stage_renders_an_invalid_resource(tmp
     out = capsys.readouterr().out
     assert "✗ Site (observed-all.yaml)" in out
     assert ".spec.forProvider.region: required field is missing" in out
+
+
+def _invalid(project, name, text):
+    fixture = project / "render-fixtures" / "site" / name
+    fixture.write_text(text + yaml.safe_dump(XR))
+    return fixture
+
+
+def test_render_all_passes_an_invalid_fixture_that_fails_with_the_expected_error(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    log = _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET], rejects="aliases need certificateArn")
+    _invalid(project, "invalid-reject-alias.yaml", "# expect-error: aliases need certificateArn\n")
+    monkeypatch.chdir(project)
+
+    assert main(["render-all"]) == 0
+
+    assert capsys.readouterr().out.splitlines() == ["✓ Site", "✓ Site (invalid-reject-alias.yaml is rejected)"]
+    assert log.read_text().splitlines()[-1].split()[3].endswith("invalid-reject-alias.yaml")
+
+
+def test_render_all_fails_an_invalid_fixture_that_renders(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET])
+    _invalid(project, "invalid-alias.yaml", "# expect-error: aliases need certificateArn\n")
+    monkeypatch.chdir(project)
+
+    assert main(["render-all"]) == 1
+    out = capsys.readouterr().out
+    assert "✗ Site (invalid-alias.yaml is rejected)" in out
+    assert "rendered without error; expected one containing 'aliases need certificateArn'" in out
+
+
+def test_render_all_fails_an_invalid_fixture_that_fails_for_another_reason(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET], rejects="cannot pull the function image")
+    _invalid(project, "invalid-reject-alias.yaml", "# expect-error: aliases need certificateArn\n")
+    monkeypatch.chdir(project)
+
+    assert main(["render-all"]) == 1
+    out = capsys.readouterr().out
+    assert "failed, but not with 'aliases need certificateArn'" in out
+    assert "cannot pull the function image" in out
+
+
+def test_render_all_requires_an_invalid_fixture_to_name_its_error(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET], rejects="anything")
+    _invalid(project, "invalid-reject.yaml", "")
+    monkeypatch.chdir(project)
+
+    assert main(["render-all"]) == 1
+    assert "invalid-reject.yaml has no `# expect-error: <text>` comment" in capsys.readouterr().out
+
+
+def test_render_takes_another_xr_and_rejects_a_missing_one(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    log = _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET])
+    other = project / "other.yaml"
+    other.write_text(yaml.safe_dump(XR))
+    monkeypatch.chdir(project)
+
+    assert main(["render", "Site", "--xr", "other.yaml"]) == 0
+    assert "other.yaml" in log.read_text()
+    assert main(["render", "Site", "--xr", "nope.yaml"]) == 1
+    assert "nope.yaml: no such file" in capsys.readouterr().err
