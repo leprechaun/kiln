@@ -128,9 +128,7 @@ _bucketArn = _observedBucket?.arn
 readiness (ACM `CertificateValidation`), gate on its Ready condition instead; the
 `crossplane-intro` skill shows how.
 
-If you compose another XR of your own as a child, its observed state is that XR's status, not an
-`atProvider`. Read it with plain `?.` and keep it uncast: Crossplane adds its own fields (such as
-`conditions`) to a real XR's status, which a closed status schema would reject.
+A child XR of your own reports its observed state differently; see "Child XRs" below.
 
 ## Report status
 
@@ -148,3 +146,78 @@ _xr = {
 
 [_bucket] + ([_xr] if _xr else [])
 ```
+
+## Child XRs
+
+One kind can compose another kind of this project, the way it composes a managed resource. Here
+a `Website` composes a `TlsCertificate` and waits for it to report a validated certificate.
+
+**The child reports an explicit status field.** Give the child a status field that answers the
+parent's question directly, and set it in the child's own function, for example from a
+Ready condition:
+
+```kcl
+schema TlsCertificateStatus:
+    certificateArn?: str
+    validated?: bool
+```
+
+```kcl
+    # in composeTlsCertificate
+    _validationConditions = ocds[_validationName]?.Resource?.status?.conditions or []
+    _validated = any_true([c.type == "Ready" and c.status == "True" for c in _validationConditions])
+    # ... status = schemas_compositions.TlsCertificateStatus {certificateArn = _certificateArn, validated = _validated}
+```
+
+The parent then reads one boolean and never parses conditions.
+
+**The parent emits the child** with an `apiVersion` and `kind` in this project's group, a
+composition-resource-name annotation, and a `spec` typed by the child's spec schema:
+
+```kcl
+composeWebsite = lambda oxr, ocds -> [any] {
+    spec: schemas_compositions.WebsiteSpec = oxr.spec
+    _domainName = spec.domainName
+
+    _certificateName = "certificate"
+
+    _certificate = {
+        apiVersion = "platform.example.com/v1alpha1"
+        kind = "TlsCertificate"
+        metadata.annotations = {"krm.kcl.dev/composition-resource-name" = _certificateName}
+        spec = schemas_compositions.TlsCertificateSpec {domainName = _domainName}
+    }
+
+    _certificateStatus = ocds[_certificateName]?.Resource?.status
+    _certificateArn = _certificateStatus?.certificateArn if _certificateStatus?.validated else None
+
+    _xr = {
+        apiVersion = oxr.apiVersion
+        kind = oxr.kind
+        metadata = oxr.metadata
+        status = schemas_compositions.WebsiteStatus {certificateArn = _certificateArn}
+    } if _certificateArn else None
+
+    [_certificate] + ([_xr] if _xr else [])
+}
+```
+
+**The parent reads the child's status uncast**, from `ocds["<name>"].Resource.status` with plain
+`?.`. Unlike a provider's `atProvider`, a real XR's status also carries fields Crossplane adds
+(such as `conditions`), and a cast to the child's closed status schema fails on them with
+`Cannot add member 'conditions'`.
+
+In tests, give the observed child a status with `conditions` as well as your own fields, so a
+cast would fail there too:
+
+```kcl
+ocds = {certificate = {Resource = {status = {
+    certificateArn = "arn:aws:acm:us-east-1:111111111111:certificate/example"
+    validated = True
+    conditions = [{"type" = "Ready", status = "True"}]
+}}}}
+```
+
+Run `kiln generate` for the child before rendering the parent: `kiln render` checks the child it
+emits against the child's generated `xrd.yaml`. The render fixture for an observed child, and what
+rendering can and cannot confirm, are in "Child XRs" in [`rendering.md`](rendering.md).

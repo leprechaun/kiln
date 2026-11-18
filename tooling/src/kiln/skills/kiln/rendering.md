@@ -95,6 +95,40 @@ kiln render ObjectStore --observed-resources path/to/dir/   # every .yaml/.yml i
 `--observed-resources` takes a multi-document YAML file, or a directory whose `.yaml`/`.yml` files
 are all loaded together. A path that does not exist is an error.
 
+## Child XRs
+
+An observed child XR (one of your own kinds, composed by this one; see "Child XRs" in
+[`composing.md`](composing.md)) is mocked like any other observed resource: its own
+`apiVersion` and `kind`, and the composition-resource-name annotation the parent used. Give it
+the status your parent reads:
+
+```yaml
+apiVersion: platform.example.com/v1alpha1
+kind: TlsCertificate
+metadata:
+  name: example-site-certificate
+  annotations:
+    crossplane.io/composition-resource-name: certificate
+status:
+  certificateArn: arn:aws:acm:us-east-1:111111111111:certificate/example
+  validated: true
+  conditions:
+    - type: Ready
+      status: "True"
+```
+
+That status is an **assumption**: you wrote it, so it shows how the parent reacts to the shape you
+expect, not the shape Crossplane returns. Only a live cluster confirms the real one
+(`kubectl get <kind> <name> -o yaml`); when you have it, copy it into the fixture.
+
+What rendering the parent confirms, and what it does not:
+
+| Confirmed | Not confirmed |
+|-----------|---------------|
+| The parent compiles in the real runtime and emits the child | The child's own Composition: rendering runs only the parent's function; render the child separately |
+| The emitted child matches the child's generated `xrd.yaml` (required fields, types, scope) | That the child's XRD and Composition are installed on the cluster |
+| How the parent reacts to the status in your fixture | The status the child really reports, or how long it takes to get there |
+
 ## Invalid XRs
 
 For each spec rule (a `check:` block, see [`composing.md`](composing.md)), add an XR that breaks

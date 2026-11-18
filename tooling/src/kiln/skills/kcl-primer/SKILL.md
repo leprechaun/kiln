@@ -26,10 +26,32 @@ _bucket = {
   merge, `:` unions. Kiln code uses `=`. Dotted keys (`spec.forProvider = ...`) build nested dicts.
 - A JSON one-liner with commas is valid, but a stray comma between multi-line entries is not.
 - Locals starting with `_` are private and mutable; use them for intermediate values.
-- `type` is reserved: write `$type`. It serialises back to `type`.
+- **`type` is a keyword.** It cannot be a bare name (a local or a lambda parameter). As a key
+  it is fine: read a dict's with `c["type"]`, and in a schema write the field as `$type` (the way
+  `kcl import` does) and read it as `fp.$type`. It serialises back to `type`:
+
+  ```kcl
+  _conditionType = _condition["type"]
+
+  schema PolicyRule:
+      $type: str
+  _rule = PolicyRule {$type = "Allow"}
+  _ruleType = _rule.$type
+  ```
 - Type annotations are valid only on locals (`x: T = ...`), not on dotted paths or dict keys. Use the
   constructor form instead: `spec.forProvider = T { ... }`.
-- No leading-operator line continuation (a line starting with `+` is a new statement).
+- **A line starting with `+` or `|` begins a new statement**, and fails to compile. To continue an
+  expression, end the previous line with the operator and a `\`:
+
+  ```kcl
+  _all = _resources + \
+      _more
+  _withKind = _base | \
+      {kind = "ConfigMap"}
+  ```
+
+  The operator alone at the end of a line is not enough, and wrapping the expression in
+  parentheses does not help; both fail too.
 - `type X = A | B` must be on one line.
 - Interpolation: `"arn:aws:s3:::${bucketName}/*"`. Concatenation with `+` also works.
 - **Inner `spec` shadows yours.** Inside a dict that defines its own `spec.<x>` key, `spec.<y>`
@@ -64,6 +86,15 @@ composeThing = lambda oxr, ocds -> [any] {
 
 The name must be exactly `compose<Kind>` with `lambda oxr, ocds`. Import only `.schemas_compositions`,
 `.schemas_providers` and the standard library; Kiln flattens files into one source string.
+
+The standard library and string methods work inside compose functions:
+
+```kcl
+import json
+
+_policy = json.encode({Version = "2012-10-17", Statement = []})   # a JSON string, as policy fields take
+_resourceName = "www.example.com".replace(".", "-")              # "www-example-com"
+```
 
 ## Schemas
 
@@ -111,6 +142,9 @@ The required test list is in [`../kiln/testing.md`](../kiln/testing.md).
 |-------|-------------|
 | `expected one of ["}"] got ,` | Comma between multi-line dict entries |
 | `unexpected token 'indent'` | Inconsistent indentation, or a continuation line starting with an operator |
+| `unexpected token '+'` (or `'\|'`) | A line starting with an operator; end the previous line with the operator and `\` |
+| `expected one of ["identifier", "literal", "(", "[", "{"] got newline` | An operator at the end of a line without a `\` after it |
+| `expected one of ["identifier", "literal", "(", "[", "{"] got =` on `type = ...` | `type` used as a bare name; rename the local, or write the key as `"type"` / `$type` |
 | `name 'X' is not defined` | Typo, or the name is defined in a file you cannot import (one-package rule) |
 | Type mismatch on `forProvider` | Field name or type differs from the imported schema; read `schemas_providers.k` |
 | Passes `kcl test`, rejected by render | Spec schema is closed; add `[str]: any` |
