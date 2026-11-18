@@ -11,8 +11,10 @@ from kiln.project import FORMATS, SCOPES, InvalidConfig, ProjectNotFound, find_p
 from kiln.pull_crds import pull_crds
 from kiln.render import render
 from kiln.render_all import render_all
-from kiln.skills import install_skills
+from kiln.skills import install_skills, stale_skills_warning
 
+
+_CHECKS_SKILLS = {"generate", "generate-all", "render", "render-all"}  # where an agent acts on the skills' guidance
 
 _NO_VALIDATE_HELP = "Skip checking rendered resources' scope and shape against crds/ and the generated XRDs"
 
@@ -158,6 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"kiln: {e}", file=sys.stderr)
         return 2
 
+    if args.command in _CHECKS_SKILLS:
+        warning = stale_skills_warning(project.root)
+        if warning:
+            print(warning, file=sys.stderr)
     return args.handler(project, args)
 
 

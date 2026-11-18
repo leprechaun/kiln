@@ -146,6 +146,7 @@ def test_generate_says_an_index_signature_on_a_spec_schema_can_be_removed(tmp_pa
     err = capsys.readouterr().err
     assert err.count("[str]: any") == 1
     assert "SiteSpec" in err and "no longer needed" in err
+    assert "kiln install-skills --force" in err  # for an agent whose installed skill still says to keep it
 
 
 def test_generate_is_silent_about_a_closed_spec_schema(tmp_path, monkeypatch, capsys):

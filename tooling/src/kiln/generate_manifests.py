@@ -62,7 +62,8 @@ def _index_signature_warning(compositions_source: str, spec_schema: str) -> str 
     return (
         f"kiln: {spec_schema} ends in `[str]: any`, which is no longer needed: the Composition passes the "
         f"compose function only declared spec fields, and the XRD ignores it. Remove it so a misspelt "
-        f"spec field fails in `kcl test`."
+        f"spec field fails in `kcl test`. If your kiln skill says to keep it, the installed skill is out "
+        f"of date: run `kiln install-skills --force`."
     )
 
 

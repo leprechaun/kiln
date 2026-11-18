@@ -17,4 +17,5 @@ checks are in the `crossplane-intro` skill.
 | `expected str, got {str:str}` inside a resource dict | `kcl test` | `spec.<y>` inside a dict with its own `spec.<x>` reads that dict's `spec` | Bind XR values to locals first (`kcl-primer`) |
 | A dependent resource appears ~10 minutes late | cluster | It waits on a `status.atProvider` value that lags until the next poll | Gate on a Ready condition (`crossplane-intro`) |
 | Passes `kcl test`, render fails to compile | `kiln render` | A cross-file import, or stale generated files | [`composing.md`](composing.md); run `kiln generate-all` |
+| `the installed Kiln skills are out of date` | `kiln generate`, `kiln render` | Kiln was upgraded but the project's skills were not; their guidance may contradict what kiln does | `kiln install-skills --force`, then reread the skill |
 | `... ends in [str]: any, which is no longer needed` | `kiln generate` | An index signature left on a spec schema from older Kiln docs | Remove it; spec schemas are closed |
