@@ -1,6 +1,7 @@
 import json
 import re
 
+from kiln.discover import compose_function
 from kiln.curate import split_blocks
 
 _LOCAL_IMPORT = re.compile(r"^import \.\w+\s*$\n?", re.MULTILINE)
@@ -79,8 +80,7 @@ def build_combined_kcl_source(schema_modules: dict[str, str], compose_source: st
 
 def enforce_naming_convention(kind: str, compose_source: str) -> None:
     expected = f"compose{kind}"
-    pattern = re.compile(rf"^{re.escape(expected)}\s*=\s*lambda\s+oxr\s*,\s*ocds\b", re.MULTILINE)
-    if not pattern.search(compose_source):
+    if not compose_function(re.escape(kind)).search(compose_source):
         raise ValueError(
             f"Expected a `{expected} = lambda oxr, ocds -> ...` function in the compose source, found none"
         )

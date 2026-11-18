@@ -1,8 +1,8 @@
 import json
+import os
 
 import yaml
 
-from kiln import generate_manifests
 from kiln.generate_manifests import generate_manifests_for
 
 WIDGET_DOC = {
@@ -26,6 +26,27 @@ WIDGET_DOC = {
 }
 
 
+def _fake_kcl(tmp_path, monkeypatch, doc):
+    """A `kcl` on PATH that writes `doc` to $target/docs/openapi.json, as `kcl doc generate --target` does."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "doc.json").write_text(json.dumps(doc))
+    script = bin_dir / "kcl"
+    script.write_text(
+        "#!/bin/sh\n"
+        'while [ $# -gt 0 ]; do\n'
+        '  case "$1" in --target) target="$2";; --file-path) package="$2";; esac\n'
+        "  shift\n"
+        "done\n"
+        '[ -d "$target" ] || { echo "target directory does not exist" >&2; exit 2; }\n'
+        '[ -d "$package" ] || { echo "--file-path must be a package directory" >&2; exit 2; }\n'
+        'mkdir -p "$target/docs"\n'
+        f'cp "{bin_dir}/doc.json" "$target/docs/openapi.json"\n'
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+
 def _write_kcl_dir(kcl_dir):
     (kcl_dir / "widget.k").write_text("composeWidget = lambda oxr, ocds -> [any] {\n  []\n}\n")
     (kcl_dir / "schemas_providers.k").write_text("schema Provider:\n    x: str\n")
@@ -36,7 +57,7 @@ def _generate_widget(tmp_path, monkeypatch, doc):
     kcl_dir = tmp_path / "kcl"
     kcl_dir.mkdir()
     _write_kcl_dir(kcl_dir)
-    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: doc)
+    _fake_kcl(tmp_path, monkeypatch, doc)
 
     output_dir = tmp_path / "out"
     generate_manifests_for(
@@ -46,6 +67,7 @@ def _generate_widget(tmp_path, monkeypatch, doc):
         plural="widgets",
         kcl_dir=kcl_dir,
         output_dir=output_dir,
+        compose_file=kcl_dir / "widget.k",
     )
     return yaml.safe_load((output_dir / "xrd.yaml").read_text())
 
@@ -75,7 +97,7 @@ def test_jsonnet_format_imports_the_kcl_source_instead_of_embedding_it(tmp_path,
     kcl_dir = tmp_path / "kcl"
     kcl_dir.mkdir()
     _write_kcl_dir(kcl_dir)
-    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
+    _fake_kcl(tmp_path, monkeypatch, WIDGET_DOC)
     output_dir = tmp_path / "out"
 
     generate_manifests_for(
@@ -85,6 +107,7 @@ def test_jsonnet_format_imports_the_kcl_source_instead_of_embedding_it(tmp_path,
         plural="widgets",
         kcl_dir=kcl_dir,
         output_dir=output_dir,
+        compose_file=kcl_dir / "widget.k",
         output_format="jsonnet",
     )
 
@@ -101,10 +124,10 @@ def _xrd_scope(tmp_path, monkeypatch, **kwargs):
     kcl_dir = tmp_path / "kcl"
     kcl_dir.mkdir(exist_ok=True)
     _write_kcl_dir(kcl_dir)
-    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
+    _fake_kcl(tmp_path, monkeypatch, WIDGET_DOC)
     generate_manifests_for(
         kind="Widget", spec_schema="WidgetSpec", group="g.io", plural="widgets",
-        kcl_dir=kcl_dir, output_dir=tmp_path / "out", **kwargs,
+        kcl_dir=kcl_dir, output_dir=tmp_path / "out", compose_file=kcl_dir / "widget.k", **kwargs,
     )
     return yaml.safe_load((tmp_path / "out" / "xrd.yaml").read_text())["spec"]["scope"]
 
@@ -117,18 +140,6 @@ def test_xrd_scope_can_be_cluster(tmp_path, monkeypatch):
     assert _xrd_scope(tmp_path, monkeypatch, scope="Cluster") == "Cluster"
 
 
-def test_changing_a_kinds_scope_warns_that_xrd_scope_is_immutable(tmp_path, monkeypatch, capsys):
-    _xrd_scope(tmp_path, monkeypatch, scope="Namespaced")
-    assert "immutable" not in capsys.readouterr().err
-
-    _xrd_scope(tmp_path, monkeypatch, scope="Cluster")
-    err = capsys.readouterr().err
-    assert "scope changed from Namespaced to Cluster" in err
-    assert "immutable" in err
-
-    _xrd_scope(tmp_path, monkeypatch, scope="Cluster")
-    assert capsys.readouterr().err == ""
-
 
 def test_yaml_composition_embeds_the_kcl_as_a_readable_literal_block(tmp_path, monkeypatch):
     _xrd_scope(tmp_path, monkeypatch)
@@ -140,30 +151,3 @@ def test_yaml_composition_embeds_the_kcl_as_a_readable_literal_block(tmp_path, m
     source = composition["spec"]["pipeline"][0]["input"]["spec"]["source"]
     assert source.startswith("composeWidget")
     assert "\\n" not in text  # no escaped newlines: the code is laid out as real lines
-
-
-def test_a_composition_near_the_annotation_limit_warns_and_names_the_largest_schemas(tmp_path, monkeypatch, capsys):
-    kcl_dir = tmp_path / "kcl"
-    kcl_dir.mkdir()
-    _write_kcl_dir(kcl_dir)
-    huge = "schema Huge:\n" + "".join(f"    field{i}?: str\n" for i in range(12000))
-    (kcl_dir / "schemas_providers.k").write_text(huge)
-    (kcl_dir / "widget.k").write_text("composeWidget = lambda oxr, ocds -> [any] {\n  _h: Huge = {}\n  []\n}\n")
-    monkeypatch.setattr(generate_manifests, "_run_kcl_doc_generate", lambda _kcl_dir: WIDGET_DOC)
-
-    generate_manifests_for(
-        kind="Widget", spec_schema="WidgetSpec", group="g.io", plural="widgets",
-        kcl_dir=kcl_dir, output_dir=tmp_path / "out",
-    )
-
-    err = capsys.readouterr().err
-    assert "Widget composition is" in err
-    assert "262144" not in err and "256 KB" in err
-    assert "schema Huge" in err
-    assert "do not trim imported schemas by hand" in err
-
-
-def test_a_small_composition_does_not_warn_about_size(tmp_path, monkeypatch, capsys):
-    _xrd_scope(tmp_path, monkeypatch)
-
-    assert "annotation limit" not in capsys.readouterr().err

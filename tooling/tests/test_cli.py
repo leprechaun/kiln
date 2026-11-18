@@ -144,22 +144,31 @@ def _scoped_project(path):
     return project
 
 
-def test_generate_all_uses_each_kinds_scope(tmp_path, monkeypatch):
-    seen = {}
-    monkeypatch.setattr("kiln.generate_all.generate_manifests_for", lambda **kw: seen.update({kw["kind"]: kw["scope"]}))
-    monkeypatch.chdir(_scoped_project(tmp_path))
-
-    assert main(["generate-all"]) == 0
-    assert seen == {"Site": "Cluster", "Role": "Namespaced"}
+def _composed_project(path, kind="IAMRole"):
+    project = _empty_project(path)
+    (project / "kcl-scripts" / f"{kind.lower()}.k").write_text(f"compose{kind} = lambda oxr, ocds -> [any] {{\n  []\n}}\n")
+    return project
 
 
-def test_generate_scope_flag_beats_the_kiln_toml_setting(tmp_path, monkeypatch):
-    seen = []
-    monkeypatch.setattr("kiln.cli.generate_manifests_for", lambda **kw: seen.append(kw["scope"]))
-    monkeypatch.chdir(_scoped_project(tmp_path))
+def test_render_all_renders_each_observed_fixture_of_a_mixed_case_kind(tmp_path, monkeypatch):
+    project = _composed_project(tmp_path / "project")
+    fixtures = project / "render-fixtures" / "iamrole"
+    fixtures.mkdir(parents=True)
+    (fixtures / "observed-ready.yaml").write_text("kind: Role\n")
+    calls = _fake_crossplane(tmp_path / "bin", monkeypatch)
+    monkeypatch.setenv("DOCKER_HOST", "unix:///fake.sock")
+    monkeypatch.chdir(project)
 
-    main(["generate", "Site"])
-    main(["generate", "Site", "--scope", "Namespaced"])
-    main(["generate", "Role"])
+    assert main(["render-all", "--no-validate"]) == 0
 
-    assert seen == ["Cluster", "Namespaced", "Namespaced"]
+    assert calls.read_text().splitlines()[-2:] == ["--observed-resources", str(fixtures / "observed-ready.yaml")]
+
+
+def test_a_kind_defined_twice_fails_the_command_with_a_message_not_a_traceback(tmp_path, monkeypatch, capsys):
+    project = _composed_project(tmp_path / "project")
+    (project / "kcl-scripts" / "iamrole_old.k").write_text("composeIAMRole = lambda oxr, ocds -> [any] {\n  []\n}\n")
+    monkeypatch.chdir(project)
+
+    assert main(["generate-all"]) == 1
+    err = capsys.readouterr().err
+    assert "IAMRole" in err and "iamrole.k" in err and "iamrole_old.k" in err

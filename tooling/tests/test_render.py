@@ -219,3 +219,33 @@ def test_render_takes_another_xr_and_rejects_a_missing_one(tmp_path, monkeypatch
     assert "other.yaml" in log.read_text()
     assert main(["render", "Site", "--xr", "nope.yaml"]) == 1
     assert "nope.yaml: no such file" in capsys.readouterr().err
+
+
+def test_render_takes_the_xrd_scope_for_a_lowercased_kind_name(tmp_path, monkeypatch):
+    project = _project(tmp_path / "project")
+    xrd_dir = project / "manifests" / "crossplane-compositions" / "site"
+    xrd_dir.mkdir(parents=True)
+    (xrd_dir / "xrd.yaml").write_text("spec:\n  scope: Cluster\n")
+    legacy = composed("s3.aws.upbound.io/v1beta1", "Bucket", {"forProvider": {"region": "eu-west-1"}}, "bucket")
+    _fake_crossplane(tmp_path, monkeypatch, [legacy])
+    monkeypatch.chdir(project)
+
+    assert main(["render", "site"]) == 0
+
+
+def test_render_works_for_a_kind_that_has_no_compose_file_yet(tmp_path, monkeypatch):
+    project = _project(tmp_path / "project")
+    (project / "kcl-scripts" / "site.k").unlink()
+    _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET])
+    monkeypatch.chdir(project)
+
+    assert main(["render", "Site"]) == 0
+
+
+def test_an_unreadable_kcl_file_does_not_stop_other_kinds_rendering(tmp_path, monkeypatch):
+    project = _project(tmp_path / "project")
+    (project / "kcl-scripts" / "broken.k").write_bytes(b"\xff\xfe not utf-8")
+    _fake_crossplane(tmp_path, monkeypatch, [GOOD_BUCKET])
+    monkeypatch.chdir(project)
+
+    assert main(["render", "Site"]) == 0

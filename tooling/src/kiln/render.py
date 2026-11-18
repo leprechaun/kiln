@@ -43,7 +43,7 @@ def _evaluate_jsonnet(composition: Path, into: Path) -> tuple[Path | None, subpr
 
 def _fixtures(project: Project, kind: str, prefix: str) -> list[Path]:
     return sorted(
-        p for p in (project.render_fixtures_dir / kind.lower()).glob(f"{prefix}-*") if p.suffix in (".yaml", ".yml")
+        p for p in project.kind(kind).fixtures_dir.glob(f"{prefix}-*") if p.suffix in (".yaml", ".yml")
     )
 
 
@@ -80,22 +80,12 @@ def _observed_file(observed: Path, into: Path) -> tuple[Path | None, subprocess.
     return combined, None
 
 
-def xr_scope(project: Project, kind: str) -> str:
-    """The scope the kind's XRD was generated with (what gets deployed), else the one kiln.toml sets."""
-    xrd = project.compositions_dir / kind.lower() / "xrd.yaml"
-    if xrd.is_file():
-        scope = ((yaml.safe_load(xrd.read_text()) or {}).get("spec") or {}).get("scope")
-        if scope:
-            return scope
-    return project.scope_for(kind)
-
-
 def _validated(project: Project, kind: str, result: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
     try:
         documents = [d for d in yaml.safe_load_all(result.stdout) if isinstance(d, dict)]
     except yaml.YAMLError as e:
         return _failure(f"kiln: could not parse the render output to validate it: {e}")
-    errors = check_rendered(documents, KindIndex.load(project), xr_scope(project, kind))
+    errors = check_rendered(documents, KindIndex.load(project), project.kind(kind).deployed_scope())
     if not errors:
         return result
     report = "\n".join(f"  {e}" for e in errors)
@@ -119,18 +109,18 @@ def render(
     """Render `kind` against `xr` (default render-fixtures/<kind>/xr.yaml)."""
     if xr is not None and not Path(xr).is_file():
         return _failure(f"kiln: {xr}: no such file")
-    xr = Path(xr) if xr is not None else project.render_fixtures_dir / kind.lower() / "xr.yaml"
+    target = project.kind(kind)
+    xr = Path(xr) if xr is not None else target.xr_file
     env = {**os.environ, **(env or {})}
     env.setdefault("DOCKER_HOST", docker_host())
-    kind_dir = project.compositions_dir / kind.lower()
 
     with tempfile.TemporaryDirectory() as scratch:
         if project.format == "jsonnet":
-            composition, failure = _evaluate_jsonnet(kind_dir / "composition.jsonnet", Path(scratch))
+            composition, failure = _evaluate_jsonnet(target.composition_jsonnet_file, Path(scratch))
             if failure:
                 return failure
         else:
-            composition = kind_dir / "composition.yaml"
+            composition = target.composition_file
 
         extra_args = []
         if observed_resources is not None:

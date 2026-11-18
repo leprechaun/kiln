@@ -235,3 +235,14 @@ def test_importing_a_cluster_scoped_crd_into_a_namespaced_project_warns(tmp_path
 
     assert main(["import", str(ROLE_CRD)]) == 0
     assert "cluster-scoped" not in capsys.readouterr().err
+
+
+def test_a_crd_without_versions_is_reported_not_silently_imported_as_nothing(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project")
+    _fake_kcl(tmp_path / "bin", monkeypatch, ROLE_CRD)
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("kind: CustomResourceDefinition\nspec:\n  group: x.io\n  names: {kind: Thing}\n")
+    monkeypatch.chdir(project)
+
+    assert main(["import", str(bad)]) == 1
+    assert "versions" in capsys.readouterr().err

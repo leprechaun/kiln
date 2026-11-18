@@ -1,21 +1,16 @@
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from kiln.curate import curate_provider_schema, merge_schemas, split_blocks
+from kiln.kcl import run_kcl
 from kiln.schema_names import read_crd_identity, schema_prefixes, to_group_prefixed_names
 from kiln.project import Project
 from kiln.validate import scope_warning_for_import
 
 
 def _kcl_import(crd_file: Path, work_dir: Path) -> str:
-    subprocess.run(
-        ["kcl", "import", "-m", "crd", str(crd_file)],
-        cwd=work_dir,
-        check=True,
-        capture_output=True,
-    )
+    run_kcl(["import", "-m", "crd", str(crd_file)], work_dir)
     # kcl 0.12 wrote every schema into one file; 0.13 writes one file per schema. Either way the
     # schemas share a namespace, so keep each file's schemas and drop its header and imports.
     generated = sorted(work_dir.glob("models/*/*.k"))

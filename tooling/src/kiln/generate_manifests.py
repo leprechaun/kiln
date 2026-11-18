@@ -1,30 +1,41 @@
 import json
 import re
-import shutil
-import subprocess
-import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from kiln.generate import build_combined_kcl_source, generate_composition, generate_xrd, source_contributors
 from kiln.curate import split_blocks, without_docstring
+from kiln.kcl import KclError, run_kcl
 from kiln.normalize import normalize_openapi_schema
+from kiln.project import Project
+
+
+@dataclass(frozen=True)
+class GenerateResult:
+    """What generating a kind produced besides its files: warnings for the caller to show the user."""
+
+    warnings: list[str]
 
 
 def _run_kcl_doc_generate(kcl_dir: Path) -> dict:
-    docs_dir = kcl_dir / "docs"
-    subprocess.run(
-        ["kcl", "doc", "generate", "--format", "openapi"],
-        cwd=kcl_dir,
-        check=True,
-        capture_output=True,
-    )
-    try:
-        [doc_file] = docs_dir.glob("*.json")
-        return json.loads(doc_file.read_text())
-    finally:
-        shutil.rmtree(docs_dir, ignore_errors=True)
+    # kcl writes its output under --target, so run it in a scratch directory and leave kcl_dir untouched.
+    with tempfile.TemporaryDirectory() as work_dir:
+        out = Path(work_dir) / "out"
+        out.mkdir()
+        run_kcl(
+            ["doc", "generate", "--file-path", str(kcl_dir.resolve()), "--format", "openapi", "--target", str(out)],
+            work_dir=Path(work_dir),
+        )
+        docs = sorted((out / "docs").glob("*.json"))
+        if len(docs) != 1:
+            names = ", ".join(d.name for d in docs)
+            raise KclError(
+                f"kcl doc generate produced {len(docs)} docs in {out}/docs, expected 1" + (f": {names}" if docs else "")
+            )
+        return json.loads(docs[0].read_text())
 
 
 class _LiteralStr(str):
@@ -116,11 +127,12 @@ def generate_manifests_for(
     plural: str,
     kcl_dir: Path,
     output_dir: Path,
+    compose_file: Path,
     output_format: str = "yaml",
     scope: str = "Namespaced",
     provider_config: dict[str, str] | None = None,
-) -> None:
-    compose_source = (kcl_dir / f"{kind.lower()}.k").read_text()
+) -> GenerateResult:
+    compose_source = compose_file.read_text()
     providers_source = (kcl_dir / "schemas_providers.k").read_text()
     compositions_source = (kcl_dir / "schemas_compositions.k").read_text()
 
@@ -146,13 +158,38 @@ def generate_manifests_for(
     previous_scope = _existing_scope(output_dir / "xrd.yaml")
     _write_composition(composition, output_format, output_dir)
     (output_dir / "xrd.yaml").write_text(yaml.dump(xrd, sort_keys=False))
+    warnings = []
     if previous_scope and previous_scope != scope:
-        print(
+        warnings.append(
             f"kiln: {kind} scope changed from {previous_scope} to {scope}. An XRD's scope is immutable: "
-            f"delete the XRD (and its XRs) on the cluster before applying this one.",
-            file=sys.stderr,
+            f"delete the XRD (and its XRs) on the cluster before applying this one."
         )
     if size_warning:
-        print(size_warning, file=sys.stderr)
+        warnings.append(size_warning)
     if index_signature_warning:
-        print(index_signature_warning, file=sys.stderr)
+        warnings.append(index_signature_warning)
+    return GenerateResult(warnings=warnings)
+
+
+def generate_kind(
+    project: Project, name: str, spec_schema: str | None = None, plural: str | None = None, scope: str | None = None
+) -> GenerateResult:
+    """Generate the manifests for the kind called `name`, with every convention taken from the project."""
+    kind = project.kind(name, spec_schema=spec_schema, plural=plural, scope=scope)
+    if not kind.source_file.is_file():
+        raise ValueError(
+            f"no compose function found for {kind.name}: expected {kind.source_file} to define "
+            f"`compose{kind.name} = lambda oxr, ocds -> ...`"
+        )
+    return generate_manifests_for(
+        kind=kind.name,
+        spec_schema=kind.spec_schema,
+        group=project.group,
+        plural=kind.plural,
+        kcl_dir=project.kcl_scripts_dir,
+        output_dir=kind.output_dir,
+        output_format=project.format,
+        scope=kind.scope,
+        provider_config=kind.provider_config,
+        compose_file=kind.source_file,
+    )

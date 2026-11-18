@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Set `KILN_DEBUG=1` to show the Python traceback for a `kiln generate` or `generate-all` failure instead of the one-line `kiln:` message.
+
 Find the message or symptom you got. KCL syntax and compile errors are in the `kcl-primer` skill; live-cluster
 checks are in the `crossplane-intro` skill.
 

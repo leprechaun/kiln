@@ -1,10 +1,12 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from kiln.discover import DuplicateKind
 from kiln.docs import render_docs, topic_names
 from kiln.generate_all import generate_all
-from kiln.generate_manifests import generate_manifests_for
+from kiln.generate_manifests import generate_kind
 from kiln.import_schema import import_schema
 from kiln.init import DEFAULT_GROUP, init_project
 from kiln.project import FORMATS, SCOPES, InvalidConfig, ProjectNotFound, find_project
@@ -28,17 +30,15 @@ def _import(project, args) -> int:
 
 
 def _generate(project, args) -> int:
-    generate_manifests_for(
-        kind=args.kind,
-        spec_schema=args.spec_schema or f"{args.kind}Spec",
-        group=project.group,
-        plural=args.plural or f"{args.kind.lower()}s",
-        kcl_dir=project.kcl_scripts_dir,
-        output_dir=project.compositions_dir / args.kind.lower(),
-        output_format=project.format,
-        scope=args.scope or project.scope_for(args.kind),
-        provider_config=project.provider_config_for(args.kind),
-    )
+    try:
+        result = generate_kind(project, args.kind, spec_schema=args.spec_schema, plural=args.plural, scope=args.scope)
+    except (ValueError, RuntimeError, OSError) as e:
+        if os.environ.get("KILN_DEBUG"):
+            raise
+        print(f"kiln: {args.kind}: {e}", file=sys.stderr)
+        return 1
+    for warning in result.warnings:
+        print(warning, file=sys.stderr)
     return 0
 
 
@@ -164,7 +164,11 @@ def main(argv: list[str] | None = None) -> int:
         warning = stale_skills_warning(project.root)
         if warning:
             print(warning, file=sys.stderr)
-    return args.handler(project, args)
+    try:
+        return args.handler(project, args)
+    except DuplicateKind as e:
+        print(f"kiln: {e}", file=sys.stderr)
+        return 1
 
 
 def run() -> None:

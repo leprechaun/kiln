@@ -28,3 +28,25 @@ def test_returns_kinds_in_sorted_file_order(tmp_path):
     )
 
     assert discover_kinds(tmp_path) == ["DnsValidatedCertificate", "StaticWebsite"]
+
+
+def test_a_kind_defined_in_two_files_is_an_error_naming_both(tmp_path):
+    import pytest
+
+    from kiln.discover import DuplicateKind, discover_compose_files
+
+    (tmp_path / "site.k").write_text("composeSite = lambda oxr, ocds -> [any] {\n  []\n}\n")
+    (tmp_path / "site_old.k").write_text("composeSite = lambda oxr, ocds -> [any] {\n  []\n}\n")
+
+    with pytest.raises(DuplicateKind, match=r"Site.*site\.k.*site_old\.k"):
+        discover_compose_files(tmp_path)
+
+
+def test_a_file_that_cannot_be_read_is_skipped_with_a_warning_naming_it(tmp_path, capsys):
+    from kiln.discover import discover_compose_files
+
+    (tmp_path / "site.k").write_text("composeSite = lambda oxr, ocds -> [any] {\n  []\n}\n")
+    (tmp_path / "latin.k").write_bytes(b"\xff\xfe not utf-8")
+
+    assert list(discover_compose_files(tmp_path)) == ["Site"]
+    assert "latin.k" in capsys.readouterr().err

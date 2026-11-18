@@ -19,6 +19,8 @@ class CrdIdentity:
 
 def read_crd_identity(crd_file: Path) -> CrdIdentity:
     spec = yaml.safe_load(crd_file.read_text())["spec"]
+    if not spec.get("versions"):
+        raise ValueError(f"{crd_file}: the CRD has no spec.versions")
     return CrdIdentity(
         group=spec["group"],
         kind=spec["names"]["kind"],
