@@ -130,21 +130,9 @@ schema for your kind — e.g. `MyKindSpec`. Design it from the *consumer's*
 perspective (what should someone configuring this resource actually be able
 to set?), not by mirroring the raw AWS fields one-to-one.
 
-**One rule that always applies:** end every composition spec schema with an
-open index signature:
-
-```kcl
-schema MyKindSpec:
-    someField: str
-    ...
-    [str]: any
-```
-
-Real Crossplane XRs carry extra runtime metadata your schema doesn't declare
-— without `[str]: any`, validating the real incoming resource against your
-schema breaks. (This isn't visible in `kcl test` with hand-built fixtures; it
-only shows up against a real resource. See `known-gaps.md` if you want the
-full story — you don't need it to keep moving.)
+Keep the spec schema closed, so a misspelt field is an error. Real Crossplane
+XRs also carry runtime fields your schema doesn't declare (`spec.crossplane`);
+the generated Composition passes your compose function only the declared ones.
 
 **If your compose function returns status on the XR**, add a `<Kind>Status`
 schema next to `<Kind>Spec` in the same file — e.g. `MyKindStatus`:
@@ -154,8 +142,7 @@ schema MyKindStatus:
     someObservedField?: str
 ```
 
-Unlike the spec schema, leave the status schema closed (no `[str]: any`), so
-a misspelt status field fails type checking in the compose function. When
+Keep the status schema closed too, so a misspelt status field fails type checking in the compose function. When
 `kiln generate` finds a `<Kind>Status` schema it normalizes it like the spec
 and declares it under `status` in the XRD. Kinds without one get a
 spec-only XRD, as before. In the compose function, type the returned XR's
