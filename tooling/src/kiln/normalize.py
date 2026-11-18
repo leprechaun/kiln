@@ -5,6 +5,10 @@ class AmbiguousUnion(ValueError):
     pass
 
 
+class ConflictingUnionProperty(ValueError):
+    pass
+
+
 def _parse_raw_default(raw: str, prop_type: str):
     if prop_type == "boolean":
         return raw == "True"
@@ -71,6 +75,18 @@ def _walk(value, schemas: dict, seen: frozenset, field: str = ""):
                                 f"union field '{field}': members '{names[i]}' and '{names[j]}' are ambiguous "
                                 f"(required fields of '{names[i]}' are a subset of those of '{names[j]}')"
                             )
+                owners: dict = {}
+                for i, member in enumerate(members):
+                    for prop, prop_schema in member["properties"].items():
+                        if prop in owners:
+                            owner_name, owner_schema = owners[prop]
+                            if owner_schema != prop_schema:
+                                raise ConflictingUnionProperty(
+                                    f"union field '{field}': property '{prop}' is declared differently "
+                                    f"by members '{owner_name}' and '{names[i]}'"
+                                )
+                        else:
+                            owners[prop] = (names[i], prop_schema)
                 node.setdefault("properties", {})
                 for member in members:
                     node["properties"].update(member["properties"])

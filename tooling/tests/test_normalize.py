@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from kiln.normalize import AmbiguousUnion, normalize_openapi_schema
+from kiln.normalize import (
+    AmbiguousUnion,
+    ConflictingUnionProperty,
+    normalize_openapi_schema,
+)
 
 PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_defaults_probe.json").read_text())
 IAMROLE = json.loads((Path(__file__).parent / "fixtures" / "openapi_iamrole.json").read_text())
@@ -183,6 +187,55 @@ def test_rejects_a_union_whose_members_are_ambiguous():
     assert "Big" in message
 
 
+def test_rejects_a_union_whose_members_declare_a_property_differently():
+    doc = {
+        "components": {
+            "schemas": {
+                "Root": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "type": "object",
+                            "x-kcl-union-types": [
+                                {"ref": "#/definitions/Alpha"},
+                                {"ref": "#/definitions/Beta"},
+                            ],
+                        },
+                    },
+                    "required": ["network"],
+                },
+                "Alpha": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "x": {"type": "string"},
+                    },
+                    "required": ["x"],
+                    "x-kcl-type": {"type": "Alpha"},
+                },
+                "Beta": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "y": {"type": "string"},
+                    },
+                    "required": ["y"],
+                    "x-kcl-type": {"type": "Beta"},
+                },
+            }
+        },
+    }
+
+    with pytest.raises(ConflictingUnionProperty) as exc:
+        normalize_openapi_schema(doc, "Root")
+
+    message = str(exc.value)
+    assert "network" in message
+    assert "id" in message
+    assert "Alpha" in message
+    assert "Beta" in message
+
+
 def test_rejects_a_union_member_with_no_required_fields():
     def member(name, properties, required):
         return {
@@ -221,3 +274,50 @@ def test_rejects_a_union_member_with_no_required_fields():
     assert "network" in message
     assert "Open" in message
     assert "no required fields" in message
+
+
+def test_merges_a_property_that_union_members_declare_identically():
+    doc = {
+        "components": {
+            "schemas": {
+                "Root": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "type": "object",
+                            "x-kcl-union-types": [
+                                {"ref": "#/definitions/Alpha"},
+                                {"ref": "#/definitions/Beta"},
+                            ],
+                        },
+                    },
+                    "required": ["network"],
+                },
+                "Alpha": {
+                    "type": "object",
+                    "properties": {
+                        "region": {"type": "string"},
+                        "x": {"type": "string"},
+                    },
+                    "required": ["x"],
+                    "x-kcl-type": {"type": "Alpha"},
+                },
+                "Beta": {
+                    "type": "object",
+                    "properties": {
+                        "region": {"type": "string"},
+                        "y": {"type": "string"},
+                    },
+                    "required": ["y"],
+                    "x-kcl-type": {"type": "Beta"},
+                },
+            }
+        },
+    }
+
+    result = normalize_openapi_schema(doc, "Root")
+
+    network = result["properties"]["network"]
+    assert set(network["properties"]) == {"region", "x", "y"}
+    assert network["properties"]["region"] == {"type": "string"}
+    assert network["oneOf"] == [{"required": ["x"]}, {"required": ["y"]}]
