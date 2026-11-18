@@ -1,6 +1,10 @@
 import copy
 
 
+class AmbiguousUnion(ValueError):
+    pass
+
+
 def _parse_raw_default(raw: str, prop_type: str):
     if prop_type == "boolean":
         return raw == "True"
@@ -22,7 +26,7 @@ def _is_any(schema) -> bool:
     return isinstance(schema, dict) and {k for k in schema if k != "default"} == {"type"} and schema["type"] == "object"
 
 
-def _walk(value, schemas: dict, seen: frozenset):
+def _walk(value, schemas: dict, seen: frozenset, field: str = ""):
     if isinstance(value, dict):
         if "$ref" in value:
             name = _ref_name(value["$ref"])
@@ -42,7 +46,7 @@ def _walk(value, schemas: dict, seen: frozenset):
             node["type"] = "boolean"
 
         if "properties" in node:
-            node["properties"] = {k: _walk(v, schemas, seen) for k, v in node["properties"].items()}
+            node["properties"] = {k: _walk(v, schemas, seen, k) for k, v in node["properties"].items()}
         if "items" in node:
             node["items"] = _walk(node["items"], schemas, seen)
         if isinstance(node.get("additionalProperties"), dict):
@@ -52,6 +56,15 @@ def _walk(value, schemas: dict, seen: frozenset):
         if union and all(isinstance(m, dict) and "ref" in m for m in union):
             members = [_walk({"$ref": m["ref"]}, schemas, seen) for m in union]
             if all(isinstance(m, dict) and m.get("type") == "object" and "properties" in m for m in members):
+                names = [_ref_name(m["ref"]) for m in union]
+                requireds = [set(member.get("required", [])) for member in members]
+                for i, a in enumerate(requireds):
+                    for j, b in enumerate(requireds):
+                        if i != j and a <= b:
+                            raise AmbiguousUnion(
+                                f"union field '{field}': members '{names[i]}' and '{names[j]}' are ambiguous "
+                                f"(required fields of '{names[i]}' are a subset of '{names[j]}'s)"
+                            )
                 node.setdefault("properties", {})
                 for member in members:
                     node["properties"].update(member["properties"])

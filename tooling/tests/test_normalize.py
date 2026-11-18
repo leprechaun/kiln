@@ -1,9 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator
 
-from kiln.normalize import normalize_openapi_schema
+from kiln.normalize import AmbiguousUnion, normalize_openapi_schema
 
 PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_defaults_probe.json").read_text())
 IAMROLE = json.loads((Path(__file__).parent / "fixtures" / "openapi_iamrole.json").read_text())
@@ -140,3 +141,43 @@ def test_leaves_non_object_unions_unexpanded():
         assert "properties" not in field
         assert field["type"] == "string"
     assert "x-kcl" not in json.dumps(schema)
+
+
+def test_rejects_a_union_whose_members_are_ambiguous():
+    def member(name, required):
+        return {
+            "type": "object",
+            "properties": {key: {"type": "string"} for key in required},
+            "required": required,
+            "x-kcl-type": {"type": name},
+        }
+
+    doc = {
+        "components": {
+            "schemas": {
+                "Root": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "type": "object",
+                            "x-kcl-union-types": [
+                                {"ref": "#/definitions/Small"},
+                                {"ref": "#/definitions/Big"},
+                            ],
+                        },
+                    },
+                    "required": ["network"],
+                },
+                "Small": member("Small", ["a"]),
+                "Big": member("Big", ["a", "b"]),
+            }
+        },
+    }
+
+    with pytest.raises(AmbiguousUnion) as exc:
+        normalize_openapi_schema(doc, "Root")
+
+    message = str(exc.value)
+    assert "network" in message
+    assert "Small" in message
+    assert "Big" in message
