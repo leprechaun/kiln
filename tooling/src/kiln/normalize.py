@@ -56,42 +56,51 @@ def _walk(value, schemas: dict, seen: frozenset, field: str = ""):
         if isinstance(node.get("additionalProperties"), dict):
             node["additionalProperties"] = _walk(node["additionalProperties"], schemas, seen)
 
-        union = value.get("x-kcl-union-types", [])
+        # kcl emits `None` in a union as a bare `{"type": "object"}` member (no ref). It is not a
+        # choice of shape, so drop it before deciding what the union is.
+        union = [m for m in value.get("x-kcl-union-types", []) if m != {"type": "object"}]
         if union and all(isinstance(m, dict) and "ref" in m for m in union):
             members = [_walk({"$ref": m["ref"]}, schemas, seen) for m in union]
             if all(isinstance(m, dict) and m.get("type") == "object" and "properties" in m for m in members):
-                names = [_ref_name(m["ref"]) for m in union]
-                requireds = [set(member.get("required", [])) for member in members]
-                for i, a in enumerate(requireds):
-                    if not a:
-                        raise AmbiguousUnion(
-                            f"union field '{field}': member '{names[i]}' has no required fields, "
-                            f"so oneOf cannot tell it apart"
-                        )
-                for i, a in enumerate(requireds):
-                    for j, b in enumerate(requireds):
-                        if i != j and a <= b:
+                if len(members) == 1:
+                    # `X | None`: a single member is not a choice, so merge it without oneOf.
+                    member = members[0]
+                    node.setdefault("properties", {}).update(member["properties"])
+                    node["required"] = list(member.get("required", []))
+                    node.pop("default", None)
+                else:
+                    names = [_ref_name(m["ref"]) for m in union]
+                    requireds = [set(member.get("required", [])) for member in members]
+                    for i, a in enumerate(requireds):
+                        if not a:
                             raise AmbiguousUnion(
-                                f"union field '{field}': members '{names[i]}' and '{names[j]}' are ambiguous "
-                                f"(required fields of '{names[i]}' are a subset of those of '{names[j]}')"
+                                f"union field '{field}': member '{names[i]}' has no required fields, "
+                                f"so oneOf cannot tell it apart"
                             )
-                owners: dict = {}
-                for i, member in enumerate(members):
-                    for prop, prop_schema in member["properties"].items():
-                        if prop in owners:
-                            owner_name, owner_schema = owners[prop]
-                            if owner_schema != prop_schema:
-                                raise ConflictingUnionProperty(
-                                    f"union field '{field}': property '{prop}' is declared differently "
-                                    f"by members '{owner_name}' and '{names[i]}'"
+                    for i, a in enumerate(requireds):
+                        for j, b in enumerate(requireds):
+                            if i != j and a <= b:
+                                raise AmbiguousUnion(
+                                    f"union field '{field}': members '{names[i]}' and '{names[j]}' are ambiguous "
+                                    f"(required fields of '{names[i]}' are a subset of those of '{names[j]}')"
                                 )
-                        else:
-                            owners[prop] = (names[i], prop_schema)
-                node.setdefault("properties", {})
-                for member in members:
-                    node["properties"].update(member["properties"])
-                node.pop("default", None)
-                node["oneOf"] = [{"required": member.get("required", [])} for member in members]
+                    owners: dict = {}
+                    for i, member in enumerate(members):
+                        for prop, prop_schema in member["properties"].items():
+                            if prop in owners:
+                                owner_name, owner_schema = owners[prop]
+                                if owner_schema != prop_schema:
+                                    raise ConflictingUnionProperty(
+                                        f"union field '{field}': property '{prop}' is declared differently "
+                                        f"by members '{owner_name}' and '{names[i]}'"
+                                    )
+                            else:
+                                owners[prop] = (names[i], prop_schema)
+                    node.setdefault("properties", {})
+                    for member in members:
+                        node["properties"].update(member["properties"])
+                    node.pop("default", None)
+                    node["oneOf"] = [{"required": member.get("required", [])} for member in members]
 
         raw = node.get("default", "")
         if raw == "":

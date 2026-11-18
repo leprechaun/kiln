@@ -321,3 +321,31 @@ def test_merges_a_property_that_union_members_declare_identically():
     assert set(network["properties"]) == {"region", "x", "y"}
     assert network["properties"]["region"] == {"type": "string"}
     assert network["oneOf"] == [{"required": ["x"]}, {"required": ["y"]}]
+
+
+UNION_NONE_PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_union_none_probe.json").read_text())
+
+
+def test_treats_a_union_with_none_as_the_optional_member():
+    schema = normalize_openapi_schema(UNION_NONE_PROBE, "Spec")
+
+    field = schema["properties"]["opt"]
+    assert set(field["properties"]) == {"a"}
+    assert "oneOf" not in field
+    assert field["required"] == ["a"]
+    assert "x-kcl" not in json.dumps(schema["properties"]["opt"])
+
+
+def test_a_union_of_two_objects_and_none_offers_only_the_two_objects_as_choices():
+    schema = normalize_openapi_schema(UNION_NONE_PROBE, "Spec")
+
+    field = schema["properties"]["both"]
+    assert set(field["properties"]) == {"a", "b"}
+    assert field["oneOf"] == [{"required": ["a"]}, {"required": ["b"]}]
+    assert "x-kcl" not in json.dumps(field)
+
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid({"req": {"a": "x"}, "both": {"a": "x"}})
+    assert validator.is_valid({"req": {"a": "x"}, "both": {"b": "y"}})
+    assert not validator.is_valid({"req": {"a": "x"}, "both": {"a": "x", "b": "y"}})
+    assert validator.is_valid({"req": {"a": "x"}})
