@@ -14,12 +14,12 @@ DOC = {
 }
 
 
-def _fake_kcl(bin_dir, monkeypatch):
+def _fake_kcl(bin_dir, monkeypatch, doc_content=None):
     """A `kcl` on PATH that behaves like `kcl doc generate --file-path P --target T`: it writes T/docs/<package>.json
     and records the directory it ran in (bin/cwd.txt) and the package it was pointed at (bin/package.txt)."""
     bin_dir.mkdir()
     doc = bin_dir / "doc.json"
-    doc.write_text(json.dumps(DOC))
+    doc.write_text(json.dumps(DOC if doc_content is None else doc_content))
     script = bin_dir / "kcl"
     script.write_text(
         "#!/bin/sh\n"
@@ -122,3 +122,39 @@ def test_generate_leaves_the_users_kcl_scripts_directory_untouched(tmp_path, mon
     bin_dir = tmp_path / "bin"
     assert (bin_dir / "package.txt").read_text().strip() == str(scripts)
     assert (bin_dir / "cwd.txt").read_text().strip() != str(scripts)
+
+
+def test_generate_reports_an_ambiguous_union_as_a_clean_error(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path / "project", 'group = "g.io"\n\n[kinds.Site]\nscope = "Cluster"\n')
+    ambiguous = {
+        "components": {
+            "schemas": {
+                "SiteSpec": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "x-kcl-union-types": [
+                                {"ref": "#/definitions/Small"},
+                                {"ref": "#/definitions/Big"},
+                            ]
+                        }
+                    },
+                },
+                "Small": {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]},
+                "Big": {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+                    "required": ["a", "b"],
+                },
+            }
+        }
+    }
+    _fake_kcl(tmp_path / "bin", monkeypatch, ambiguous)
+    monkeypatch.chdir(project)
+
+    code = main(["generate", "Site"])
+
+    err = capsys.readouterr().err
+    assert code != 0
+    assert "network" in err and "Small" in err and "Big" in err
+    assert "Traceback" not in err

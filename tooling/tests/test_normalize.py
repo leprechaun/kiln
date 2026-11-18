@@ -181,3 +181,43 @@ def test_rejects_a_union_whose_members_are_ambiguous():
     assert "network" in message
     assert "Small" in message
     assert "Big" in message
+
+
+def test_rejects_a_union_member_with_no_required_fields():
+    def member(name, properties, required):
+        return {
+            "type": "object",
+            "properties": {key: {"type": "string"} for key in properties},
+            "required": required,
+            "x-kcl-type": {"type": name},
+        }
+
+    doc = {
+        "components": {
+            "schemas": {
+                "Root": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "type": "object",
+                            "x-kcl-union-types": [
+                                {"ref": "#/definitions/Open"},
+                                {"ref": "#/definitions/Fixed"},
+                            ],
+                        },
+                    },
+                    "required": ["network"],
+                },
+                "Open": member("Open", ["a"], []),
+                "Fixed": member("Fixed", ["b"], ["b"]),
+            }
+        },
+    }
+
+    with pytest.raises(AmbiguousUnion) as exc:
+        normalize_openapi_schema(doc, "Root")
+
+    message = str(exc.value)
+    assert "network" in message
+    assert "Open" in message
+    assert "no required fields" in message

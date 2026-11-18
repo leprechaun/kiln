@@ -59,11 +59,17 @@ def _walk(value, schemas: dict, seen: frozenset, field: str = ""):
                 names = [_ref_name(m["ref"]) for m in union]
                 requireds = [set(member.get("required", [])) for member in members]
                 for i, a in enumerate(requireds):
+                    if not a:
+                        raise AmbiguousUnion(
+                            f"union field '{field}': member '{names[i]}' has no required fields, "
+                            f"so oneOf cannot tell it apart"
+                        )
+                for i, a in enumerate(requireds):
                     for j, b in enumerate(requireds):
                         if i != j and a <= b:
                             raise AmbiguousUnion(
                                 f"union field '{field}': members '{names[i]}' and '{names[j]}' are ambiguous "
-                                f"(required fields of '{names[i]}' are a subset of '{names[j]}'s)"
+                                f"(required fields of '{names[i]}' are a subset of those of '{names[j]}')"
                             )
                 node.setdefault("properties", {})
                 for member in members:
