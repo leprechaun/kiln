@@ -1,3 +1,4 @@
+import json
 import re
 
 from kiln.curate import split_blocks
@@ -104,21 +105,44 @@ def _provider_config_wrapper(group: str, provider_config: dict[str, str]) -> str
     )
 
 
+def _declared_spec_wrapper(spec_fields: list[str]) -> str:
+    """KCL that gives the compose function the observed XR with only its declared spec fields.
+
+    A real XR's spec also carries fields Crossplane adds (`spec.crossplane`, and on legacy XRs
+    `compositionRef`, `resourceRefs`, ...). Dropping them here lets spec schemas stay closed.
+    """
+    return (
+        f"_kilnSpecFields = {json.dumps(spec_fields)}\n"
+        '_kilnObservedXr = option("params").oxr\n'
+        "_kilnOxr = _kilnObservedXr | {spec = {k: v for k, v in _kilnObservedXr.spec if k in _kilnSpecFields}} "
+        "if _kilnObservedXr?.spec else _kilnObservedXr\n"
+    )
+
+
 def generate_composition(
-    kind: str, group: str, combined_source: str, provider_config: dict[str, str] | None = None
+    kind: str,
+    group: str,
+    combined_source: str,
+    provider_config: dict[str, str] | None = None,
+    spec_fields: list[str] | None = None,
 ) -> dict:
+    """The Composition for `kind`. With `spec_fields` (the spec schema's declared fields), the compose
+    function sees only those fields of the observed XR's spec."""
     enforce_naming_convention(kind, combined_source)
     compose_fn = f"compose{kind}"
-    call = f'{compose_fn}(option("params").oxr, option("params").ocds)'
+    source = combined_source + "\n"
+    if spec_fields is not None:
+        source += _declared_spec_wrapper(spec_fields)
+        call = f'{compose_fn}(_kilnOxr, option("params").ocds)'
+    else:
+        call = f'{compose_fn}(option("params").oxr, option("params").ocds)'
     if provider_config:
-        source = (
-            combined_source
-            + "\n"
-            + _provider_config_wrapper(group, provider_config)
+        source += (
+            _provider_config_wrapper(group, provider_config)
             + f"items = [_kilnWithProviderConfig(r) for r in {call}]\n"
         )
     else:
-        source = combined_source + f"\nitems = {call}\n"
+        source += f"items = {call}\n"
 
     return {
         "apiVersion": "apiextensions.crossplane.io/v1",

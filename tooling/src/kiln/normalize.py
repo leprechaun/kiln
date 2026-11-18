@@ -17,6 +17,11 @@ def _ref_name(ref: str) -> str:
     return ref.rsplit("/", 1)[-1]
 
 
+def _is_any(schema) -> bool:
+    """`any`, as kcl doc writes it: an object type with nothing else declared."""
+    return isinstance(schema, dict) and {k for k in schema if k != "default"} == {"type"} and schema["type"] == "object"
+
+
 def _walk(value, schemas: dict, seen: frozenset):
     if isinstance(value, dict):
         if "$ref" in value:
@@ -25,16 +30,13 @@ def _walk(value, schemas: dict, seen: frozenset):
                 return {}  # cyclic ref guard; not expected for provider schemas
             return _walk(copy.deepcopy(schemas[name]), schemas, seen | {name})
 
-        # `[str]: any` (an open-schema index signature, used purely to make
-        # a composition schema tolerate the real control plane's injected
-        # metadata) makes kcl emit a spurious `additionalProperties: {type:
-        # object}` alongside `properties`. A genuine `{str:X}` map field has
-        # no declared `properties` sibling and carries `x-kcl-dict-key-type`
-        # -- that marker is how we tell the two apart before stripping it.
-        is_real_map = "x-kcl-dict-key-type" in value
         node = {k: v for k, v in value.items() if not k.startswith("x-kcl")}
-        if not is_real_map and "properties" in node:
-            node.pop("additionalProperties", None)
+        if "properties" in node and _is_any(node.get("additionalProperties")):
+            # A schema with `[str]: any`: kcl emits `additionalProperties: {type: object}` beside
+            # its properties. The XRD stays closed: undeclared fields are rejected, and the
+            # Composition never passes Crossplane's own spec fields to the compose function.
+            # (A real `{str:X}` map field has no `properties`; a typed `[str]: X` signature is kept.)
+            node.pop("additionalProperties")
 
         if node.get("type") == "bool":
             node["type"] = "boolean"

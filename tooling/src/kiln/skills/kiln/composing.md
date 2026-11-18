@@ -15,13 +15,13 @@ schema ObjectStoreSpec:
     bucketName: str
     region: str = "us-east-1"
     tags?: {str:str}
-    [str]: any
 ```
 
-**End every spec schema with `[str]: any`.** A real XR carries extra control-plane fields (such
-as `spec.crossplane`) that your schema does not declare, and a closed schema rejects them.
-`kcl test` fixtures never include those fields, so only a real render shows the failure.
-Generation strips this from the XRD, so it does not widen your public API.
+The spec schema is closed: a field it does not declare is an error, so a misspelt field in a test
+fails in `kcl test`, and the XRD rejects it from consumers. On a cluster, a real XR's spec also
+carries fields Crossplane adds (`spec.crossplane`); the generated Composition passes your function
+only the fields your schema declares, so it never sees them. Do not name a spec field after one of
+Crossplane's (such as `crossplane`).
 
 ### Spec rules
 
@@ -32,7 +32,6 @@ XR that breaks it fails with your message instead of producing resources the clo
 schema SiteSpec:
     aliases?: [str]
     certificateArn?: str
-    [str]: any
 
     check:
         not aliases or certificateArn, "aliases need certificateArn"

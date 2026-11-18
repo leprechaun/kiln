@@ -36,11 +36,9 @@ A kind is not tested until its `<kind>_test.k` has a `test_*` function for each 
 5. **Observed-state stages:** cold start (`ocds = {}`), a resource observed but with an
    empty `atProvider = {}`, partly observed, and fully observed. Assert exactly what is
    emitted at each stage.
-6. **An extra field in the spec:** a test whose `spec` also carries an unexpected field
-   (such as `crossplane = {}`) and still composes. This mirrors the `[str]: any` rule.
-7. **Status:** the returned XR carries the right status once the value is observed, and is
+6. **Status:** the returned XR carries the right status once the value is observed, and is
    not emitted before.
-8. **Spec rules:** for each `check:` rule, a test where a valid spec composes. The rejected
+7. **Spec rules:** for each `check:` rule, a test where a valid spec composes. The rejected
    side cannot be asserted in `kcl test`; it is an `invalid-<case>.yaml` render fixture
    ([`rendering.md`](rendering.md)).
 

@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -7,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from kiln.generate import build_combined_kcl_source, generate_composition, generate_xrd, source_contributors
+from kiln.curate import split_blocks, without_docstring
 from kiln.normalize import normalize_openapi_schema
 
 
@@ -48,6 +50,20 @@ def _existing_scope(xrd_file: Path) -> str | None:
 # caps all of an object's annotations together at this many bytes.
 ANNOTATION_LIMIT = 262144
 SIZE_WARNING_THRESHOLD = 0.8
+
+
+_ANY_INDEX_SIGNATURE = re.compile(r"^[ \t]+\[(?:\w+\s*:\s*)?str\]\s*:\s*any\s*$", re.MULTILINE)
+
+
+def _index_signature_warning(compositions_source: str, spec_schema: str) -> str | None:
+    block = split_blocks(compositions_source)[1].get(spec_schema, "")
+    if not _ANY_INDEX_SIGNATURE.search(without_docstring(block)):
+        return None
+    return (
+        f"kiln: {spec_schema} ends in `[str]: any`, which is no longer needed: the Composition passes the "
+        f"compose function only declared spec fields, and the XRD ignores it. Remove it so a misspelt "
+        f"spec field fails in `kcl test`."
+    )
 
 
 def _size_warning(kind: str, composition: dict) -> str | None:
@@ -110,13 +126,17 @@ def generate_manifests_for(
     combined_source = build_combined_kcl_source(
         {"schemas_providers": providers_source, "schemas_compositions": compositions_source}, compose_source
     )
-    composition = generate_composition(
-        kind=kind, group=group, combined_source=combined_source, provider_config=provider_config
-    )
-    size_warning = _size_warning(kind, composition)
-
     doc = _run_kcl_doc_generate(kcl_dir)
     schema = normalize_openapi_schema(doc, spec_schema)
+    composition = generate_composition(
+        kind=kind,
+        group=group,
+        combined_source=combined_source,
+        provider_config=provider_config,
+        spec_fields=list(schema.get("properties", {})),
+    )
+    size_warning = _size_warning(kind, composition)
+    index_signature_warning = _index_signature_warning(compositions_source, spec_schema)
     status_name = f"{kind}Status"
     status_schema = normalize_openapi_schema(doc, status_name) if status_name in doc["components"]["schemas"] else None
     xrd = generate_xrd(kind=kind, group=group, plural=plural, spec_schema=schema, status_schema=status_schema, scope=scope)
@@ -133,3 +153,5 @@ def generate_manifests_for(
         )
     if size_warning:
         print(size_warning, file=sys.stderr)
+    if index_signature_warning:
+        print(index_signature_warning, file=sys.stderr)

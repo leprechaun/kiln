@@ -90,7 +90,7 @@ What each check can and cannot tell you:
 | Check | Cost | Catches | Misses |
 |-------|------|---------|--------|
 | `kcl test .` | seconds, no Docker | logic errors, typos in schema fields, wrong or missing `forProvider` fields | anything about the generated Composition or XRD, a closed spec schema, how the real function runtime flattens your files |
-| `kiln render <Kind>` | slower, needs Docker | the generated source failing to compile in the real runtime, a spec schema that rejects real XRs, and every composed resource the cluster would reject (checked against the CRDs in `crds/`) | whether the cloud provider accepts the values; nothing talks to a cluster or AWS |
+| `kiln render <Kind>` | slower, needs Docker | the generated source failing to compile in the real runtime, and every composed resource the cluster would reject (checked against the CRDs in `crds/`) | whether the cloud provider accepts the values; nothing talks to a cluster or AWS |
 | `kiln render-all` with `observed-<stage>.yaml` fixtures | same | the stages that depend on observed state: whether the next resource appears, its shape, and whether status is reported | observed shapes you got wrong in the fixture (a fixture encodes your assumptions) |
 | `kiln render-all` with `invalid-<case>.yaml` fixtures | same | that an XR breaking a spec rule (a `check:` block) is rejected with the right error, which `kcl test` cannot assert | rules you never wrote |
 
@@ -160,7 +160,7 @@ kiln render-all                  # prints a check mark for every kind and stage,
 ## Checklist for a new kind
 
 1. `kiln pull-crds`, then `kiln import` each provider resource you use, from the `.m.` groups.
-2. Add `<Kind>Spec` (ending in `[str]: any`) and, if you report status, `<Kind>Status`.
+2. Add `<Kind>Spec` and, if you report status, `<Kind>Status`.
 3. Write failing tests in `kcl-scripts/<kind>_test.k`, then `compose<Kind>` in
    `kcl-scripts/<kind>.k`, until `kcl test .` passes.
 4. `kiln generate <Kind>`, add `render-fixtures/<kind>/xr.yaml`, an `observed-<stage>.yaml`

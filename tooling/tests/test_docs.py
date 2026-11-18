@@ -30,7 +30,6 @@ def test_docs_prints_the_overview_anywhere_without_a_project(docs):
 
     for command in ("kiln pull-crds", "kiln import", "kiln generate", "kiln render"):
         assert command in overview
-    assert "[str]: any" in overview
     assert not overview.startswith("---\nname:")  # skill frontmatter is stripped
 
 
@@ -122,7 +121,7 @@ def test_the_overview_opens_with_ground_rules_that_make_tests_a_deliverable(docs
 def test_the_testing_topic_lists_the_tests_every_kind_needs(docs):
     tests = _section(docs("testing"), "## The tests every kind needs")
 
-    for required in ("cold start", "optional", "conditional", "extra field", "status"):
+    for required in ("cold start", "optional", "conditional", "status", "spec rules"):
         assert required in tests.lower()
 
 
@@ -156,3 +155,12 @@ def test_the_troubleshooting_topic_covers_the_errors_kiln_and_the_cluster_report
         "no CRD or XRD for",
     ):
         assert message in table
+
+
+def test_the_docs_teach_closed_spec_schemas(docs):
+    everything = docs("all")
+
+    for paragraph in everything.split("\n\n"):
+        if "[str]: any" in paragraph:
+            assert "no longer needed" in paragraph, f"teaches `[str]: any`: {paragraph[:200]}"
+    assert "spec.crossplane" in docs("composing")

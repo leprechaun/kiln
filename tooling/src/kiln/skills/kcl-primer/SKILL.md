@@ -103,7 +103,6 @@ schema ThingSpec:
     name: str                 # required
     count: int = 5            # default
     tags?: {str:str}          # optional
-    [str]: any                # always last on XR spec schemas
 ```
 
 Schemas can carry validation: a `check:` block (`count > 0, "count must be positive"`).
@@ -147,7 +146,6 @@ The required test list is in [`../kiln/testing.md`](../kiln/testing.md).
 | `expected one of ["identifier", "literal", "(", "[", "{"] got =` on `type = ...` | `type` used as a bare name; rename the local, or write the key as `"type"` / `$type` |
 | `name 'X' is not defined` | Typo, or the name is defined in a file you cannot import (one-package rule) |
 | Type mismatch on `forProvider` | Field name or type differs from the imported schema; read `schemas_providers.k` |
-| Passes `kcl test`, rejected by render | Spec schema is closed; add `[str]: any` |
 | Unknown attribute on `StatusAtProvider` | Those schemas are closed; check the real field names |
 | `expected str, got {str:str}` inside a resource dict | `spec.<y>` resolves to the dict's own `spec`; bind the XR value to a local first |
 

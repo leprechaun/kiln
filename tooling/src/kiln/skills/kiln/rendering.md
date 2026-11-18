@@ -36,7 +36,7 @@ kiln render ObjectStore
 ```
 
 Rendering runs the generated source inside the real function runtime, so it catches mistakes
-`kcl test` cannot: flattening problems, a closed spec schema, and wrong observed shapes. Then
+`kcl test` cannot: flattening problems and wrong observed shapes. Then
 Kiln checks what it rendered.
 
 ## What render checks
