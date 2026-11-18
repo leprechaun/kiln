@@ -48,6 +48,16 @@ def _walk(value, schemas: dict, seen: frozenset):
         if isinstance(node.get("additionalProperties"), dict):
             node["additionalProperties"] = _walk(node["additionalProperties"], schemas, seen)
 
+        union = value.get("x-kcl-union-types", [])
+        if union and all(isinstance(m, dict) and "ref" in m for m in union):
+            members = [_walk({"$ref": m["ref"]}, schemas, seen) for m in union]
+            if all(isinstance(m, dict) and m.get("type") == "object" and "properties" in m for m in members):
+                node.setdefault("properties", {})
+                for member in members:
+                    node["properties"].update(member["properties"])
+                node.pop("default", None)
+                node["oneOf"] = [{"required": member.get("required", [])} for member in members]
+
         raw = node.get("default", "")
         if raw == "":
             node.pop("default", None)

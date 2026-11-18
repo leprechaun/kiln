@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from kiln.normalize import normalize_openapi_schema
 
 PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_defaults_probe.json").read_text())
@@ -79,3 +81,62 @@ def test_strips_the_open_schema_index_signature_artifact_but_keeps_real_maps():
 
     assert "additionalProperties" not in schema
     assert schema["properties"]["tags"]["additionalProperties"] == {"type": "string"}
+
+
+UNION_PROBE = json.loads((Path(__file__).parent / "fixtures" / "openapi_union_probe.json").read_text())
+
+
+def test_expands_an_object_union_into_merged_properties_and_one_of_required_lists():
+    schema = normalize_openapi_schema(UNION_PROBE, "EnvironmentSpec")
+
+    network = schema["properties"]["network"]
+    assert set(network["properties"]) == {"vpcId", "subnetIds", "cidr", "region"}
+    assert network["properties"]["region"]["default"] == "us-east-1"
+    assert network["oneOf"] == [{"required": ["vpcId"]}, {"required": ["cidr"]}]
+    assert all("type" not in branch for branch in network["oneOf"])
+    assert "x-kcl" not in json.dumps(schema)
+
+
+def test_one_of_enforces_choosing_exactly_one_union_member():
+    schema = normalize_openapi_schema(UNION_PROBE, "EnvironmentSpec")
+    validator = Draft202012Validator(schema)
+
+    assert validator.is_valid({"network": {"vpcId": "vpc-1"}})
+    assert validator.is_valid({"network": {"cidr": "10.0.0.0/16"}})
+    assert not validator.is_valid({"network": {"subnetIds": ["a"]}})
+    assert not validator.is_valid({"network": {"vpcId": "vpc-1", "cidr": "10.0.0.0/16"}})
+
+
+def test_leaves_non_object_unions_unexpanded():
+    doc = {
+        "components": {
+            "schemas": {
+                "Root": {
+                    "type": "object",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "x-kcl-type": {"type": "str | int"},
+                            "x-kcl-union-types": [
+                                {"type": "string", "default": '"Required"', "enum": ['"Required"']},
+                                {"type": "string", "default": '"Always"', "enum": ['"Always"']},
+                            ],
+                        },
+                        "size": {
+                            "type": "string",
+                            "x-kcl-union-types": [{"type": "string"}, {"type": "integer"}],
+                        },
+                    },
+                }
+            }
+        }
+    }
+
+    schema = normalize_openapi_schema(doc, "Root")
+
+    for name in ("mode", "size"):
+        field = schema["properties"][name]
+        assert "oneOf" not in field
+        assert "properties" not in field
+        assert field["type"] == "string"
+    assert "x-kcl" not in json.dumps(schema)
