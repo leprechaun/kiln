@@ -40,6 +40,44 @@ schema SiteSpec:
 `kcl test` cannot assert that something fails, so cover each rule with an `invalid-<case>.yaml`
 render fixture ([`rendering.md`](rendering.md)) and keep the passing side in `kcl test`.
 
+### Choosing one of several shapes
+
+A field that takes exactly one of several object shapes is a union of schemas. Write the alias on
+one line; a multi-line alias silently keeps only its first member:
+
+```kcl
+schema NetworkSpec:
+    vpcId: str
+    subnetIds?: [str]
+
+schema CreateVpcSpec:
+    cidr: str
+    region: str = "us-east-1"
+
+type EnvironmentNetwork = NetworkSpec | CreateVpcSpec
+
+schema EnvironmentSpec:
+    network: EnvironmentNetwork
+```
+
+The XRD lists every member's fields under `network` (so `kubectl explain` shows them) and adds a
+`oneOf` with one `required` list per member: an XR must satisfy exactly one. Fields with defaults
+leave the `required` list, so each member needs at least one required field that no other member's
+required fields contain. Build members with their constructors (`NetworkSpec {...}`) in the compose
+function and in tests.
+
+`A | None` is an optional `A`: it adds no `oneOf`. `A | B | None` offers A and B as the choices.
+Kiln reads kcl's bare-object member as `None`, so `A | any` is read as `A | None`. A union with a
+scalar, literal or other non-object member is not expanded: the XRD carries no member fields and
+no shape check for it.
+
+`kiln generate` stops with an error naming the field when the choice cannot work:
+
+- A member's required fields are a subset of another member's, or it has none: an XR could match
+  several members, so `oneOf` rejects valid input. Give each member a required field of its own.
+- Two members declare the same field differently (`id: str` against `id: int`). Rename one, or
+  declare it identically in both.
+
 ### Status
 
 To report status back to consumers, add an optional `<Kind>Status` schema

@@ -59,7 +59,7 @@ Each file below sits next to this one. Read it when its trigger applies; with on
 | Read | When |
 |------|------|
 | [`provider-schemas.md`](provider-schemas.md) | pulling CRDs, choosing a provider group, importing schemas, a composition that is too big |
-| [`composing.md`](composing.md) | designing the spec and status schemas, writing the compose function, resources that wait on observed state, reporting status, composing another of your kinds (child XRs) |
+| [`composing.md`](composing.md) | designing the spec and status schemas (including a field that takes one of several shapes), writing the compose function, resources that wait on observed state, reporting status, composing another of your kinds (child XRs) |
 | [`testing.md`](testing.md) | writing `<kind>_test.k`: the tests every kind needs |
 | [`rendering.md`](rendering.md) | generating and rendering, what render checks, observed-stage fixtures (including child XRs), invalid-XR fixtures |
 | [`configuration.md`](configuration.md) | anything in `kiln.toml`: XR scope, provider config, output format |

@@ -20,4 +20,7 @@ checks are in the `crossplane-intro` skill.
 | A dependent resource appears ~10 minutes late | cluster | It waits on a `status.atProvider` value that lags until the next poll | Gate on a Ready condition (`crossplane-intro`) |
 | Passes `kcl test`, render fails to compile | `kiln render` | A cross-file import, or stale generated files | [`composing.md`](composing.md); run `kiln generate-all` |
 | `the installed Kiln skills are out of date` | `kiln generate`, `kiln render` | Kiln was upgraded but the project's skills were not; their guidance may contradict what kiln does | `kiln install-skills --force`, then reread the skill |
+| `union field '<f>': members '<A>' and '<B>' are ambiguous` / `member '<A>' has no required fields` | `kiln generate` | `oneOf` needs each member to have a required field no other member's required fields contain | Give each member its own required field ([`composing.md`](composing.md), "Choosing one of several shapes") |
+| `union field '<f>': property '<p>' is declared differently by members` | `kiln generate` | Two union members declare one field with different types | Rename it in one member, or declare it identically in both |
+| A union field has no member fields in the XRD | generated XRD | A member is not an object schema (a scalar or literal) | Use object schemas for every member ([`composing.md`](composing.md)) |
 | `... ends in [str]: any, which is no longer needed` | `kiln generate` | An index signature left on a spec schema from older Kiln docs | Remove it; spec schemas are closed |
